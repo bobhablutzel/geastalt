@@ -1,0 +1,35 @@
+# Build output
+target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Claude
+.claude/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+
+# Temporary files
+*.tmp
+*.swp
+
+# Secrets and credentials
+.env
+.env.*
+*.env
+secrets.yml
+secrets.yaml
+*-secret.yml
+*-secret.yaml
+credentials/
+secrets/
+
+# Project-specific ignores
+addresses-v3r2_2.yaml
+test-data/

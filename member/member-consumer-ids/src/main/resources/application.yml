@@ -1,0 +1,61 @@
+spring:
+  main:
+    banner-mode: off
+  application:
+    name: member-consumer-ids
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:192.168.1.17}:${DB_PORT:5432}/${DB_NAME:member}
+    username: ${DB_USERNAME:bob}
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${HIKARI_MAX_POOL:10}
+      minimum-idle: ${HIKARI_MIN_IDLE:2}
+      connection-timeout: 10000
+      idle-timeout: 300000
+      max-lifetime: 600000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP_ID:member-consumer-ids}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.LongDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+    listener:
+      ack-mode: manual
+
+server:
+  port: 9010
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+
+# Member configuration
+member:
+  external-id:
+    encryption-key: ${MEMBER_EXTERNAL_ID_KEY:}
+  pending-actions:
+    topics:
+      generate-external-identifiers: ${PENDING_ACTION_TOPIC_GENERATE_IDS:tracking.member.ids}
+      validate-address: ${PENDING_ACTION_TOPIC_VALIDATE_ADDRESS:tracking.member.address}

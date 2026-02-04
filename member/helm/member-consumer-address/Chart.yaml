@@ -1,0 +1,6 @@
+apiVersion: v2
+name: member-consumer-address
+description: Kafka consumer for processing Validate Address pending actions
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: member-consumer-ids
+description: Kafka consumer for processing Generate External Identifiers pending actions
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

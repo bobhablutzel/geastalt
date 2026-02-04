@@ -1,0 +1,87 @@
+spring:
+  main:
+    banner-mode: off
+  application:
+    name: member-api
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.LongSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:192.168.1.17}:${DB_PORT:5432}/${DB_NAME:member}
+    username: ${DB_USERNAME:bob}
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${HIKARI_MAX_POOL:100}
+      minimum-idle: ${HIKARI_MIN_IDLE:20}
+      connection-timeout: 10000
+      idle-timeout: 300000
+      max-lifetime: 600000
+      auto-commit: true
+      leak-detection-threshold: 30000
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+usps:
+  base-url: ${USPS_BASE_URL:https://apis-tem.usps.com}
+  client-id: ${USPS_CLIENT_ID:}
+  client-secret: ${USPS_CLIENT_SECRET:}
+  oauth:
+    token-path: /oauth2/v3/token
+    grant-type: client_credentials
+
+grpc:
+  server:
+    port: 9001
+    reflection-service-enabled: true
+
+server:
+  port: 9002
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLE_RATE:0.01}
+    enabled: ${TRACING_ENABLED:true}
+
+# Member external ID configuration
+member:
+  external-id:
+    encryption-key: ${MEMBER_EXTERNAL_ID_KEY:}
+  pending-actions:
+    topics:
+      generate-external-identifiers: ${PENDING_ACTION_TOPIC_GENERATE_IDS:tracking.member.ids}
+      validate-address: ${PENDING_ACTION_TOPIC_VALIDATE_ADDRESS:tracking.member.address}
+
+# OpenTelemetry configuration
+otel:
+  exporter:
+    otlp:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://jaeger:4317}
+  service:
+    name: ${spring.application.name}
+  traces:
+    exporter: otlp

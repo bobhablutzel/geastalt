@@ -1,0 +1,14 @@
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Claude
+.claude/
+
+# OS
+.DS_Store
+
+# Temporary files
+*.tmp
+*.swp
