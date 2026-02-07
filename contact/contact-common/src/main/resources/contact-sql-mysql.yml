@@ -1,0 +1,12 @@
+spring:
+  config:
+    activate:
+      on-profile: mysql
+
+contact:
+  sql:
+    bulk:
+      insert-address: >-
+        INSERT INTO standardized_addresses (street_address, secondary_address, city, state, zip_code, zip_plus4)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)

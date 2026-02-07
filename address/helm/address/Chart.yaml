@@ -1,0 +1,13 @@
+apiVersion: v2
+name: address
+description: Kafka consumer for address validation using USPS API
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - address
+  - kafka
+  - consumer
+  - usps
+maintainers:
+  - name: Geastalt

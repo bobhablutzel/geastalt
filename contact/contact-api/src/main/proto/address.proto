@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package com.geastalt.contact.grpc;
+
+option java_multiple_files = true;
+option java_package = "com.geastalt.contact.grpc";
+option java_outer_classname = "AddressProto";
+
+service AddressService {
+  rpc StandardizeAddress (StandardizeAddressRequest) returns (StandardizeAddressResponse);
+}
+
+message StandardizeAddressRequest {
+  string street_address = 1;
+  string secondary_address = 2;
+  string city = 3;
+  string state = 4;
+  string zip_code = 5;
+  string zip_plus4 = 6;
+}
+
+message StandardizeAddressResponse {
+  Address address = 1;
+  string delivery_point = 2;
+  string carrier_route = 3;
+  string dpv_confirmation = 4;
+  string dpv_cmra = 5;
+  string business = 6;
+  string central_delivery_point = 7;
+  string vacant = 8;
+}
+
+message Address {
+  int64 id = 1;
+  string street_address = 2;
+  string secondary_address = 3;
+  string city = 4;
+  string state = 5;
+  string zip_code = 6;
+  string zip_plus4 = 7;
+}

@@ -1,0 +1,496 @@
+syntax = "proto3";
+
+package com.geastalt.contact.grpc;
+
+option java_multiple_files = true;
+option java_package = "com.geastalt.contact.grpc";
+option java_outer_classname = "ContactProto";
+
+service ContactService {
+  // Address operations
+  rpc AddAddress (AddAddressRequest) returns (AddAddressResponse);
+  rpc UpdateAddress (UpdateAddressRequest) returns (UpdateAddressResponse);
+  rpc GetAddresses (GetAddressesRequest) returns (GetAddressesResponse);
+  rpc RemoveAddress (RemoveAddressRequest) returns (RemoveAddressResponse);
+
+  // Email operations
+  rpc AddEmail (AddEmailRequest) returns (AddEmailResponse);
+  rpc UpdateEmail (UpdateEmailRequest) returns (UpdateEmailResponse);
+  rpc GetEmails (GetEmailsRequest) returns (GetEmailsResponse);
+  rpc RemoveEmail (RemoveEmailRequest) returns (RemoveEmailResponse);
+
+  // Phone operations
+  rpc AddPhone (AddPhoneRequest) returns (AddPhoneResponse);
+  rpc UpdatePhone (UpdatePhoneRequest) returns (UpdatePhoneResponse);
+  rpc GetPhones (GetPhonesRequest) returns (GetPhonesResponse);
+  rpc RemovePhone (RemovePhoneRequest) returns (RemovePhoneResponse);
+
+  // Search operations
+  rpc SearchContacts (SearchContactsRequest) returns (SearchContactsResponse);
+  rpc GetContactById (GetContactByIdRequest) returns (GetContactByIdResponse);
+  rpc GetContactByAlternateId (GetContactByAlternateIdRequest) returns (GetContactByAlternateIdResponse);
+  rpc SearchContactsByPhone (SearchContactsByPhoneRequest) returns (SearchContactsByPhoneResponse);
+
+  // Contact operations
+  rpc CreateContact (CreateContactRequest) returns (CreateContactResponse);
+  rpc BulkCreateContacts (BulkCreateContactsRequest) returns (BulkCreateContactsResponse);
+
+  // Pending action operations
+  rpc HasPendingAction (HasPendingActionRequest) returns (HasPendingActionResponse);
+
+  // Plan operations
+  rpc CreatePlan (CreatePlanRequest) returns (CreatePlanResponse);
+  rpc UpdatePlan (UpdatePlanRequest) returns (UpdatePlanResponse);
+  rpc GetPlan (GetPlanRequest) returns (GetPlanResponse);
+  rpc GetPlans (GetPlansRequest) returns (GetPlansResponse);
+  rpc DeletePlan (DeletePlanRequest) returns (DeletePlanResponse);
+
+  // Partition operations
+  rpc GetContactPartition (GetContactPartitionRequest) returns (GetContactPartitionResponse);
+
+  // Contact plan operations
+  rpc AddContactPlan (AddContactPlanRequest) returns (AddContactPlanResponse);
+  rpc UpdateContactPlan (UpdateContactPlanRequest) returns (UpdateContactPlanResponse);
+  rpc GetContactPlans (GetContactPlansRequest) returns (GetContactPlansResponse);
+  rpc GetCurrentContactPlan (GetCurrentContactPlanRequest) returns (GetCurrentContactPlanResponse);
+  rpc RemoveContactPlan (RemoveContactPlanRequest) returns (RemoveContactPlanResponse);
+}
+
+enum AddressType {
+  ADDRESS_TYPE_UNSPECIFIED = 0;
+  HOME = 1;
+  BUSINESS = 2;
+  MAILING = 3;
+}
+
+// Pending action types
+enum PendingActionType {
+  PENDING_ACTION_TYPE_UNSPECIFIED = 0;
+  GENERATE_EXTERNAL_IDENTIFIERS = 1;
+  VALIDATE_ADDRESS = 2;
+}
+
+message AlternateIdEntry {
+  string type = 1;
+  string alternate_id = 2;
+}
+
+message AddAddressRequest {
+  int64 contact_id = 1;
+  int64 address_id = 2;
+  AddressType address_type = 3;
+}
+
+message AddAddressResponse {
+  int64 id = 1;
+  int64 contact_id = 2;
+  int64 address_id = 3;
+  AddressType address_type = 4;
+  ContactAddressDetails address_details = 5;
+}
+
+message UpdateAddressRequest {
+  int64 contact_id = 1;
+  int64 address_id = 2;
+  AddressType address_type = 3;
+}
+
+message UpdateAddressResponse {
+  int64 id = 1;
+  int64 contact_id = 2;
+  int64 address_id = 3;
+  AddressType address_type = 4;
+  ContactAddressDetails address_details = 5;
+}
+
+message GetAddressesRequest {
+  int64 contact_id = 1;
+}
+
+message GetAddressesResponse {
+  repeated ContactAddressEntry addresses = 1;
+}
+
+message ContactAddressEntry {
+  int64 id = 1;
+  AddressType address_type = 2;
+  int64 address_id = 3;
+  ContactAddressDetails address_details = 4;
+}
+
+message ContactAddressDetails {
+  string street_address = 1;
+  string secondary_address = 2;
+  string city = 3;
+  string state = 4;
+  string zip_code = 5;
+  string zip_plus4 = 6;
+}
+
+message RemoveAddressRequest {
+  int64 contact_id = 1;
+  AddressType address_type = 2;
+}
+
+message RemoveAddressResponse {
+  bool success = 1;
+}
+
+// Email types and messages
+enum EmailType {
+  EMAIL_TYPE_UNSPECIFIED = 0;
+  EMAIL_HOME = 1;
+  EMAIL_BUSINESS = 2;
+  EMAIL_MAILING = 3;
+}
+
+message AddEmailRequest {
+  int64 contact_id = 1;
+  string email = 2;
+  EmailType email_type = 3;
+}
+
+message AddEmailResponse {
+  int64 id = 1;
+  int64 contact_id = 2;
+  string email = 3;
+  EmailType email_type = 4;
+}
+
+message UpdateEmailRequest {
+  int64 contact_id = 1;
+  string email = 2;
+  EmailType email_type = 3;
+}
+
+message UpdateEmailResponse {
+  int64 id = 1;
+  int64 contact_id = 2;
+  string email = 3;
+  EmailType email_type = 4;
+}
+
+message GetEmailsRequest {
+  int64 contact_id = 1;
+}
+
+message GetEmailsResponse {
+  repeated ContactEmailEntry emails = 1;
+}
+
+message ContactEmailEntry {
+  int64 id = 1;
+  EmailType email_type = 2;
+  string email = 3;
+}
+
+message RemoveEmailRequest {
+  int64 contact_id = 1;
+  EmailType email_type = 2;
+}
+
+message RemoveEmailResponse {
+  bool success = 1;
+}
+
+// Phone types and messages
+enum PhoneType {
+  PHONE_TYPE_UNSPECIFIED = 0;
+  PHONE_HOME = 1;
+  PHONE_BUSINESS = 2;
+  PHONE_MAILING = 3;
+}
+
+message AddPhoneRequest {
+  int64 contact_id = 1;
+  string phone_number = 2;
+  PhoneType phone_type = 3;
+}
+
+message AddPhoneResponse {
+  int64 id = 1;
+  int64 contact_id = 2;
+  string phone_number = 3;
+  PhoneType phone_type = 4;
+}
+
+message UpdatePhoneRequest {
+  int64 contact_id = 1;
+  string phone_number = 2;
+  PhoneType phone_type = 3;
+}
+
+message UpdatePhoneResponse {
+  int64 id = 1;
+  int64 contact_id = 2;
+  string phone_number = 3;
+  PhoneType phone_type = 4;
+}
+
+message GetPhonesRequest {
+  int64 contact_id = 1;
+}
+
+message GetPhonesResponse {
+  repeated ContactPhoneEntry phones = 1;
+}
+
+message ContactPhoneEntry {
+  int64 id = 1;
+  PhoneType phone_type = 2;
+  string phone_number = 3;
+}
+
+message RemovePhoneRequest {
+  int64 contact_id = 1;
+  PhoneType phone_type = 2;
+}
+
+message RemovePhoneResponse {
+  bool success = 1;
+}
+
+// Search messages
+message SearchContactsRequest {
+  string last_name = 1;           // Required, supports "Smith*" wildcard
+  string first_name = 2;          // Optional, supports "Jo*" wildcard
+  int32 max_results = 3;          // Optional, default 25, max 1000
+  bool include_total_count = 4;   // Optional, default false (skips expensive count query)
+}
+
+message SearchContactsResponse {
+  repeated ContactEntry contacts = 1;
+  int32 total_count = 2;          // Only populated if include_total_count=true
+}
+
+message ContactEntry {
+  int64 id = 1;
+  repeated AlternateIdEntry alternate_ids = 6;
+  string first_name = 2;
+  string last_name = 3;
+  optional string preferred_email = 4;
+  optional ContactAddressDetails preferred_address = 5;
+}
+
+// Contact ID lookup
+message GetContactByIdRequest {
+  int64 contact_id = 1;
+}
+
+message GetContactByIdResponse {
+  ContactEntry contact = 1;
+}
+
+// Alternate ID lookup
+message GetContactByAlternateIdRequest {
+  string alternate_id = 1;
+  string type = 2;  // Defaults to NEW_NATIONS if not specified
+}
+
+message GetContactByAlternateIdResponse {
+  ContactEntry contact = 1;
+}
+
+// Phone search
+message SearchContactsByPhoneRequest {
+  string phone_number = 1;
+  int32 max_results = 2;  // Optional, default 25
+}
+
+message SearchContactsByPhoneResponse {
+  repeated ContactEntry contacts = 1;
+}
+
+// Pending action check
+message HasPendingActionRequest {
+  int64 contact_id = 1;
+  PendingActionType action_type = 2;
+}
+
+message HasPendingActionResponse {
+  bool has_pending_action = 1;
+}
+
+// Create contact
+message CreateContactRequest {
+  string first_name = 1;
+  string last_name = 2;
+  bool skip_generate_external_identifiers = 3;  // If true, don't add GENERATE_EXTERNAL_IDENTIFIERS pending action
+  bool skip_validate_address = 4;               // If true, don't add VALIDATE_ADDRESS pending action
+  string carrier_name = 5;                      // Used for partition assignment (e.g., "Humana")
+}
+
+message CreateContactResponse {
+  ContactEntry contact = 1;
+  int32 partition_number = 2;
+}
+
+// Bulk create contacts
+message BulkCreateContactsRequest {
+  repeated ContactInput contacts = 1;
+  bool skip_generate_external_identifiers = 2;  // Applies to all contacts
+  bool skip_validate_address = 3;               // Applies to all contacts
+}
+
+message ContactInput {
+  string first_name = 1;
+  string last_name = 2;
+  repeated PhoneInput phones = 3;
+  repeated EmailInput emails = 4;
+  repeated AddressInput addresses = 5;
+  string carrier_name = 6;                      // Used for partition assignment (e.g., "Humana")
+}
+
+message PhoneInput {
+  string phone_number = 1;
+  PhoneType phone_type = 2;
+}
+
+message EmailInput {
+  string email = 1;
+  EmailType email_type = 2;
+}
+
+message AddressInput {
+  AddressType address_type = 1;
+  string street_address = 2;
+  string secondary_address = 3;
+  string city = 4;
+  string state = 5;
+  string zip_code = 6;
+  string zip_plus4 = 7;
+}
+
+message BulkCreateContactsResponse {
+  repeated BulkCreateResult results = 1;
+  int32 total_count = 2;
+  int32 success_count = 3;
+  int32 failure_count = 4;
+}
+
+message BulkCreateResult {
+  int32 index = 1;              // Index in the input array
+  bool success = 2;
+  int64 contact_id = 3;          // Populated if success=true
+  string error_message = 4;     // Populated if success=false
+  int32 partition_number = 5;   // Populated if success=true
+}
+
+// Plan messages
+message PlanEntry {
+  int64 plan_id = 1;
+  string plan_name = 2;
+  int32 carrier_id = 3;
+  string carrier_name = 4;
+}
+
+message CreatePlanRequest {
+  string plan_name = 1;
+  int32 carrier_id = 2;
+  string carrier_name = 3;
+}
+
+message CreatePlanResponse {
+  PlanEntry plan = 1;
+}
+
+message UpdatePlanRequest {
+  int64 plan_id = 1;
+  string plan_name = 2;
+  int32 carrier_id = 3;
+  string carrier_name = 4;
+}
+
+message UpdatePlanResponse {
+  PlanEntry plan = 1;
+}
+
+message GetPlanRequest {
+  int64 plan_id = 1;
+}
+
+message GetPlanResponse {
+  PlanEntry plan = 1;
+}
+
+message GetPlansRequest {
+}
+
+message GetPlansResponse {
+  repeated PlanEntry plans = 1;
+}
+
+message DeletePlanRequest {
+  int64 plan_id = 1;
+}
+
+message DeletePlanResponse {
+  bool success = 1;
+}
+
+// Contact plan messages
+message ContactPlanEntry {
+  int64 id = 1;
+  int64 contact_id = 2;
+  PlanEntry plan = 3;
+  string effective_date = 4;    // ISO 8601 UTC datetime: YYYY-MM-DDTHH:MM:SSZ
+  string expiration_date = 5;   // ISO 8601 UTC datetime: YYYY-MM-DDTHH:MM:SSZ
+  bool is_current = 6;
+}
+
+message AddContactPlanRequest {
+  int64 contact_id = 1;
+  int64 plan_id = 2;
+  string effective_date = 3;    // ISO 8601 UTC datetime: YYYY-MM-DDTHH:MM:SSZ
+  string expiration_date = 4;   // ISO 8601 UTC datetime: YYYY-MM-DDTHH:MM:SSZ
+}
+
+message AddContactPlanResponse {
+  ContactPlanEntry contact_plan = 1;
+}
+
+message UpdateContactPlanRequest {
+  int64 id = 1;                 // Contact plan ID
+  int64 plan_id = 2;
+  string effective_date = 3;    // ISO 8601 UTC datetime: YYYY-MM-DDTHH:MM:SSZ
+  string expiration_date = 4;   // ISO 8601 UTC datetime: YYYY-MM-DDTHH:MM:SSZ
+}
+
+message UpdateContactPlanResponse {
+  ContactPlanEntry contact_plan = 1;
+}
+
+message GetContactPlansRequest {
+  int64 contact_id = 1;
+}
+
+message GetContactPlansResponse {
+  repeated ContactPlanEntry contact_plans = 1;
+}
+
+message GetCurrentContactPlanRequest {
+  int64 contact_id = 1;
+}
+
+message GetCurrentContactPlanResponse {
+  ContactPlanEntry contact_plan = 1;  // Will be empty if no current plan
+}
+
+message RemoveContactPlanRequest {
+  int64 contact_id = 1;
+  int64 id = 2;                 // Contact plan ID
+}
+
+message RemoveContactPlanResponse {
+  bool success = 1;
+}
+
+// Partition lookup
+message GetContactPartitionRequest {
+  int64 contact_id = 1;
+}
+
+message GetContactPartitionResponse {
+  int64 contact_id = 1;
+  int32 partition_number = 2;
+}

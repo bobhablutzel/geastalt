@@ -1,0 +1,38 @@
+replicaCount: 2
+
+image:
+  repository: contact-consumer-ids
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 9010
+
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "250m"
+  limits:
+    memory: "1Gi"
+    cpu: "500m"
+
+javaOpts: "-Xms256m -Xmx512m -XX:+UseG1GC"
+
+database:
+  host: "192.168.1.17"
+  port: "5432"
+  name: "contact"
+  username: "bob"
+
+kafka:
+  bootstrapServers: "kafka:9092"
+  consumerGroupId: "contact-consumer-ids"
+  topics:
+    generateExternalIdentifiers: "tracking.contact.ids"
+
+# External secret name (create with kubectl before deploying)
+# kubectl create secret generic contact-consumer-ids-secret \
+#   --from-literal=DB_PASSWORD=xxx \
+#   --from-literal=CONTACT_EXTERNAL_ID_KEY=xxx
+secretName: "contact-consumer-ids-secret"

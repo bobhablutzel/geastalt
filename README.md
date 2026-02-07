@@ -18,18 +18,22 @@ and address validation.
 
 | System | Description | Status |
 |--------|-------------|--------|
-| [member](member/) | Member management service with gRPC/REST APIs and Kafka consumers | Active |
+| [address](address/) | Address validation consumer using USPS API | Active |
+| [contact](contact/) | Contact management service with gRPC/REST APIs and Kafka consumers | Active |
 | [lock](lock/) | Distributed lock manager with Raft consensus and cross-region quorum | Active |
 
 ## Structure
 
 ```
 geastalt/
-├── member/           # Member management system
-│   ├── member-api/
-│   ├── member-common/
-│   ├── member-consumer-ids/
-│   ├── member-consumer-address/
+├── address/          # Address validation consumer
+│   ├── src/
+│   ├── helm/
+│   └── Dockerfile
+├── contact/          # Contact management system
+│   ├── contact-api/
+│   ├── contact-common/
+│   ├── contact-consumer-ids/
 │   ├── helm/
 │   ├── k8s/
 │   └── terraform/
@@ -60,7 +64,7 @@ block
   app["Application Layer"]
   block:domainGroup:2
     columns 2
-    Customer Address Contract Partner
+    Contact Address Partner Contract
   end
   domain["Domain Layer"]
   block:foundGroup:2

@@ -1,0 +1,29 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: contact-mysql
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root-password
+      MYSQL_DATABASE: contact
+      MYSQL_USER: contact
+      MYSQL_PASSWORD: test-password
+    volumes:
+      - ./terraform/database/sql/mysql:/docker-entrypoint-initdb.d
+      - mysql-data:/var/lib/mysql
+    command:
+      - --innodb-buffer-pool-size=2G
+      - --innodb-flush-log-at-trx-commit=2
+      - --innodb-log-file-size=512M
+      - --max-allowed-packet=64M
+      - --max-connections=200
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "contact", "-ptest-password"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  mysql-data:

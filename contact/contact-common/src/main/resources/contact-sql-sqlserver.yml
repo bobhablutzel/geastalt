@@ -1,0 +1,127 @@
+spring:
+  config:
+    activate:
+      on-profile: sqlserver
+
+contact:
+  sql:
+    search:
+      by-name-exact: >-
+        SELECT TOP(:limit) m.id, m.first_name, m.last_name,
+        me.email as preferred_email,
+        sa.street_address, sa.secondary_address, sa.city, sa.state, sa.zip_code, sa.zip_plus4
+        FROM contacts m
+        LEFT JOIN contact_emails me ON me.contact_id = m.id AND me.preferred = 1
+        LEFT JOIN contact_addresses ma ON ma.contact_id = m.id AND ma.preferred = 1
+        LEFT JOIN standardized_addresses sa ON sa.id = ma.address_id
+        WHERE m.last_name_lower = :lastName
+
+      by-name-exact-with-first-name: >-
+        SELECT TOP(:limit) m.id, m.first_name, m.last_name,
+        me.email as preferred_email,
+        sa.street_address, sa.secondary_address, sa.city, sa.state, sa.zip_code, sa.zip_plus4
+        FROM contacts m
+        LEFT JOIN contact_emails me ON me.contact_id = m.id AND me.preferred = 1
+        LEFT JOIN contact_addresses ma ON ma.contact_id = m.id AND ma.preferred = 1
+        LEFT JOIN standardized_addresses sa ON sa.id = ma.address_id
+        WHERE m.last_name_lower = :lastName AND m.first_name_lower = :firstName
+
+      by-name-prefix: >-
+        SELECT TOP(:limit) m.id, m.first_name, m.last_name,
+        me.email as preferred_email,
+        sa.street_address, sa.secondary_address, sa.city, sa.state, sa.zip_code, sa.zip_plus4
+        FROM contacts m
+        LEFT JOIN contact_emails me ON me.contact_id = m.id AND me.preferred = 1
+        LEFT JOIN contact_addresses ma ON ma.contact_id = m.id AND ma.preferred = 1
+        LEFT JOIN standardized_addresses sa ON sa.id = ma.address_id
+        WHERE m.last_name_lower LIKE :lastNamePattern
+
+      by-name-prefix-with-first-name: >-
+        SELECT TOP(:limit) m.id, m.first_name, m.last_name,
+        me.email as preferred_email,
+        sa.street_address, sa.secondary_address, sa.city, sa.state, sa.zip_code, sa.zip_plus4
+        FROM contacts m
+        LEFT JOIN contact_emails me ON me.contact_id = m.id AND me.preferred = 1
+        LEFT JOIN contact_addresses ma ON ma.contact_id = m.id AND ma.preferred = 1
+        LEFT JOIN standardized_addresses sa ON sa.id = ma.address_id
+        WHERE m.last_name_lower LIKE :lastNamePattern AND m.first_name_lower LIKE :firstNamePattern
+
+      count-by-name-exact: >-
+        SELECT COUNT(*) FROM contacts WHERE last_name_lower = :lastName
+
+      count-by-name-exact-with-first-name: >-
+        SELECT COUNT(*) FROM contacts WHERE last_name_lower = :lastName AND first_name_lower = :firstName
+
+      count-by-name-prefix: >-
+        SELECT COUNT(*) FROM contacts WHERE last_name_lower LIKE :lastNamePattern
+
+      count-by-name-prefix-with-first-name: >-
+        SELECT COUNT(*) FROM contacts WHERE last_name_lower LIKE :lastNamePattern AND first_name_lower LIKE :firstNamePattern
+
+      find-by-alternate-id-lookup: >-
+        SELECT maid.contact_id, ml.partition_number
+        FROM contact_alternate_ids maid
+        LEFT JOIN contact_lookup ml ON ml.contact_id = maid.contact_id
+        WHERE maid.id_type = :idType AND maid.alternate_id = :alternateId
+
+      find-by-id: >-
+        SELECT m.id, m.first_name, m.last_name,
+        me.email as preferred_email,
+        sa.street_address, sa.secondary_address, sa.city, sa.state, sa.zip_code, sa.zip_plus4
+        FROM contacts m
+        LEFT JOIN contact_emails me ON me.contact_id = m.id AND me.preferred = 1
+        LEFT JOIN contact_addresses ma ON ma.contact_id = m.id AND ma.preferred = 1
+        LEFT JOIN standardized_addresses sa ON sa.id = ma.address_id
+        WHERE m.id = :contactId
+
+      fetch-alternate-ids: >-
+        SELECT id_type, alternate_id FROM contact_alternate_ids WHERE contact_id = :contactId
+
+      batch-fetch-alternate-ids: >-
+        SELECT contact_id, id_type, alternate_id FROM contact_alternate_ids WHERE contact_id IN (:contactIds)
+
+      search-by-phone: >-
+        SELECT TOP(:limit) m.id, m.first_name, m.last_name,
+        me.email as preferred_email,
+        sa.street_address, sa.secondary_address, sa.city, sa.state, sa.zip_code, sa.zip_plus4
+        FROM contacts m
+        INNER JOIN contact_phones mp ON mp.contact_id = m.id
+        LEFT JOIN contact_emails me ON me.contact_id = m.id AND me.preferred = 1
+        LEFT JOIN contact_addresses ma ON ma.contact_id = m.id AND ma.preferred = 1
+        LEFT JOIN standardized_addresses sa ON sa.id = ma.address_id
+        WHERE mp.phone_number = :phoneNumber
+
+    bulk:
+      insert-contact: >-
+        INSERT INTO contacts (first_name, last_name) VALUES (?, ?)
+
+      insert-phone: >-
+        INSERT INTO contact_phones (contact_id, phone_number, phone_type) VALUES (?, ?, ?)
+
+      insert-email: >-
+        INSERT INTO contact_emails (contact_id, email, email_type, preferred) VALUES (?, ?, ?, ?)
+
+      insert-address: >-
+        INSERT INTO standardized_addresses (street_address, secondary_address, city, state, zip_code, zip_plus4)
+        VALUES (?, ?, ?, ?, ?, ?)
+
+      insert-contact-address: >-
+        INSERT INTO contact_addresses (contact_id, address_id, address_type, preferred) VALUES (?, ?, ?, ?)
+
+      insert-pending-action: >-
+        INSERT INTO contact_pending_actions (contact_id, action_type, created_at) VALUES (?, ?, ?)
+
+      insert-contact-lookup: >-
+        INSERT INTO contact_lookup (contact_id, partition_number, created_at) VALUES (?, ?, ?)
+
+    controller:
+      find-contacts-without-alternate-id: >-
+        SELECT TOP(?) m.id FROM contacts m
+        WHERE NOT EXISTS (
+          SELECT 1 FROM contact_alternate_ids mai
+          WHERE mai.contact_id = m.id AND mai.id_type = 'NEW_NATIONS'
+        )
+        ORDER BY m.id
+
+      insert-alternate-id: >-
+        INSERT INTO contact_alternate_ids (contact_id, id_type, alternate_id, created_at) VALUES (?, 'NEW_NATIONS', ?, ?)

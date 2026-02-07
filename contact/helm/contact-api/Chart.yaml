@@ -1,0 +1,12 @@
+apiVersion: v2
+name: contact-api
+description: Contact API gRPC Service
+type: application
+version: 0.1.0
+appVersion: "0.0.1-SNAPSHOT"
+keywords:
+  - contact
+  - grpc
+  - rest-api
+maintainers:
+  - name: Geastalt
