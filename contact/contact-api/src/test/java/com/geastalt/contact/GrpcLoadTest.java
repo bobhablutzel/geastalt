@@ -21,10 +21,13 @@ import java.util.concurrent.atomic.LongAdder;
  * CSV-based gRPC Load Test for Contact Service.
  * Seeds contacts from a CSV file via BulkCreateContacts, then runs a load test battery.
  *
- * Usage: java GrpcLoadTest [concurrency] [burnInSeconds] [testDurationSeconds]
+ * Usage: java GrpcLoadTest [--no-seed] [concurrency] [burnInSeconds] [testDurationSeconds]
  *                          [seedingChannels] [seedBatchSize] [host] [port] [csvPath]
  * Defaults: 50 concurrent, 30s burn-in, 300s test, 8 seeding channels, 200 batch size,
- *           localhost, 9001, test-data/contacts_with_addresses.csv
+ *           localhost, 9001, ../test-data/test_end_users.csv
+ *
+ * --no-seed: Skip CSV seeding phases and sample existing data via gRPC queries instead.
+ *            Useful when the database already has contacts from a previous run.
  */
 public class GrpcLoadTest {
 
@@ -38,17 +41,33 @@ public class GrpcLoadTest {
     private static final Set<String> sampleLastNames = ConcurrentHashMap.newKeySet();
     private static final List<Long> samplePlanIds = new CopyOnWriteArrayList<>();
 
+    // Mapping from CSV contract_id to database plan_id (populated in Phase 1)
+    private static final Map<Integer, Long> contractToPlanId = new ConcurrentHashMap<>();
+    // Mapping from contact_id to CSV contract_id (populated during seeding for sampled contacts)
+    private static final ConcurrentHashMap<Long, Integer> contactContractMap = new ConcurrentHashMap<>();
+
     private static final AtomicLong seededCount = new AtomicLong(0);
 
     public static void main(String[] args) throws Exception {
-        int concurrency = args.length > 0 ? Integer.parseInt(args[0]) : 50;
-        int burnInSeconds = args.length > 1 ? Integer.parseInt(args[1]) : 30;
-        int testDurationSeconds = args.length > 2 ? Integer.parseInt(args[2]) : 300;
-        int seedingChannels = args.length > 3 ? Integer.parseInt(args[3]) : 8;
-        int seedBatchSize = args.length > 4 ? Integer.parseInt(args[4]) : 200;
-        String host = args.length > 5 ? args[5] : "localhost";
-        int port = args.length > 6 ? Integer.parseInt(args[6]) : 9001;
-        String csvPath = args.length > 7 ? args[7] : "test-data/contacts_with_addresses.csv";
+        // Parse --no-seed flag and filter it from positional args
+        boolean noSeed = false;
+        List<String> positionalArgs = new ArrayList<>();
+        for (String arg : args) {
+            if ("--no-seed".equals(arg)) {
+                noSeed = true;
+            } else {
+                positionalArgs.add(arg);
+            }
+        }
+
+        int concurrency = positionalArgs.size() > 0 ? Integer.parseInt(positionalArgs.get(0)) : 50;
+        int burnInSeconds = positionalArgs.size() > 1 ? Integer.parseInt(positionalArgs.get(1)) : 30;
+        int testDurationSeconds = positionalArgs.size() > 2 ? Integer.parseInt(positionalArgs.get(2)) : 300;
+        int seedingChannels = positionalArgs.size() > 3 ? Integer.parseInt(positionalArgs.get(3)) : 8;
+        int seedBatchSize = positionalArgs.size() > 4 ? Integer.parseInt(positionalArgs.get(4)) : 200;
+        String host = positionalArgs.size() > 5 ? positionalArgs.get(5) : "localhost";
+        int port = positionalArgs.size() > 6 ? Integer.parseInt(positionalArgs.get(6)) : 9001;
+        String csvPath = positionalArgs.size() > 7 ? positionalArgs.get(7) : "../test-data/test_end_users.csv";
 
         System.out.println("╔══════════════════════════════════════════════════════════════╗");
         System.out.println("║       CONTACT SERVICE gRPC CSV-BASED LOAD TEST              ║");
@@ -59,39 +78,50 @@ public class GrpcLoadTest {
         System.out.printf("  Concurrency:      %d threads%n", concurrency);
         System.out.printf("  Burn-in:          %d seconds%n", burnInSeconds);
         System.out.printf("  Test Duration:    %d seconds (%d minutes)%n", testDurationSeconds, testDurationSeconds / 60);
-        System.out.printf("  Seeding Channels: %d%n", seedingChannels);
-        System.out.printf("  Seed Batch Size:  %d%n", seedBatchSize);
-        System.out.printf("  CSV Path:         %s%n", csvPath);
+        System.out.printf("  Seed Mode:        %s%n", noSeed ? "DISABLED (sampling existing data)" : "CSV seeding");
+        if (!noSeed) {
+            System.out.printf("  Seeding Channels: %d%n", seedingChannels);
+            System.out.printf("  Seed Batch Size:  %d%n", seedBatchSize);
+            System.out.printf("  CSV Path:         %s%n", csvPath);
+        }
         System.out.println();
 
-        // Phase 1: Create test plans
-        System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        System.out.println("  Phase 1: Creating test plans");
-        System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        createTestPlans(host, port);
+        if (noSeed) {
+            // Sample existing data via gRPC queries
+            System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            System.out.println("  Sampling existing data via gRPC");
+            System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            sampleExistingData(host, port);
+        } else {
+            // Phase 1: Create test plans
+            System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            System.out.println("  Phase 1: Creating test plans");
+            System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            createTestPlans(host, port, csvPath);
 
-        // Phase 2: Seed contacts from CSV
-        System.out.println();
-        System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        System.out.println("  Phase 2: Seeding contacts from CSV");
-        System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        seedContactsFromCsv(host, port, csvPath, seedingChannels, seedBatchSize);
+            // Phase 2: Seed contacts from CSV
+            System.out.println();
+            System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            System.out.println("  Phase 2: Seeding contacts from CSV");
+            System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            seedContactsFromCsv(host, port, csvPath, seedingChannels, seedBatchSize);
+
+            // Phase 3: Assign plans to sample contacts
+            System.out.println();
+            System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            System.out.println("  Phase 3: Assigning plans to contacts");
+            System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            assignPlansToContacts(host, port);
+        }
 
         System.out.printf("%n  Collected samples: %d contact IDs, %d phone numbers, %d last names, %d plan IDs%n",
                 sampleContactIds.size(), samplePhoneNumbers.size(), sampleLastNames.size(), samplePlanIds.size());
 
         if (sampleContactIds.isEmpty()) {
-            throw new RuntimeException("No contact IDs collected during seeding");
+            throw new RuntimeException("No contact IDs collected — is the database populated?");
         }
 
-        // Phase 3: Assign plans to sample contacts
-        System.out.println();
-        System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        System.out.println("  Phase 3: Assigning plans to contacts");
-        System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        assignPlansToContacts(host, port);
-
-        // Phase 4: Run load test battery
+        // Run load test battery
         System.out.println();
         System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         System.out.println("  Phase 4: Running load test battery");
@@ -112,18 +142,23 @@ public class GrpcLoadTest {
         // Convert last names set to list for random access
         List<String> lastNamesList = new ArrayList<>(sampleLastNames);
 
-        List<TestOperation> operations = List.of(
+        List<TestOperation> operations = new ArrayList<>(List.of(
                 new TestOperation("GetAddresses", stubs, GrpcLoadTest::testGetAddresses),
                 new TestOperation("GetPhones", stubs, GrpcLoadTest::testGetPhones),
                 new TestOperation("GetEmails", stubs, GrpcLoadTest::testGetEmails),
                 new TestOperation("SearchContactsByPhone", stubs, GrpcLoadTest::testSearchContactsByPhone),
                 new TestOperation("SearchContacts", stubs, (stub, random) -> testSearchContacts(stub, random, lastNamesList)),
-                new TestOperation("GetContactById", stubs, GrpcLoadTest::testGetContactById),
-                new TestOperation("GetPlans", stubs, GrpcLoadTest::testGetPlans),
-                new TestOperation("GetPlan", stubs, GrpcLoadTest::testGetPlan),
-                new TestOperation("GetContactPlans", stubs, GrpcLoadTest::testGetContactPlans),
-                new TestOperation("GetCurrentContactPlan", stubs, GrpcLoadTest::testGetCurrentContactPlan)
-        );
+                new TestOperation("GetContactById", stubs, GrpcLoadTest::testGetContactById)
+        ));
+
+        if (!samplePlanIds.isEmpty()) {
+            operations.add(new TestOperation("GetPlans", stubs, GrpcLoadTest::testGetPlans));
+            operations.add(new TestOperation("GetPlan", stubs, GrpcLoadTest::testGetPlan));
+            operations.add(new TestOperation("GetContactPlans", stubs, GrpcLoadTest::testGetContactPlans));
+            operations.add(new TestOperation("GetCurrentContactPlan", stubs, GrpcLoadTest::testGetCurrentContactPlan));
+        } else {
+            System.out.println("\n  Skipping plan-related tests (no plans found)");
+        }
 
         for (TestOperation op : operations) {
             System.out.println();
@@ -152,31 +187,117 @@ public class GrpcLoadTest {
         }
     }
 
-    // ─── Phase 1: Create test plans ─────────────────────────────────────────────
+    // ─── No-seed: sample existing data via gRPC ────────────────────────────────
 
-    private static void createTestPlans(String host, int port) {
+    private static final String[] COMMON_LAST_NAMES = {
+            "smith", "johnson", "williams", "brown", "jones", "garcia", "miller", "davis",
+            "rodriguez", "martinez", "hernandez", "lopez", "gonzalez", "wilson", "anderson",
+            "thomas", "taylor", "moore", "jackson", "martin"
+    };
+
+    private static void sampleExistingData(String host, int port) {
         ManagedChannel channel = ManagedChannelBuilder.forAddress(host, port)
                 .usePlaintext()
                 .build();
         try {
             ContactServiceGrpc.ContactServiceBlockingStub stub = ContactServiceGrpc.newBlockingStub(channel);
 
-            String[][] plans = {
-                    {"Gold Health Plan", "1001", "Aetna"},
-                    {"Silver Health Plan", "1002", "Aetna"},
-                    {"Bronze Health Plan", "1003", "Humana"},
-                    {"Platinum Health Plan", "1004", "UnitedHealth"},
-                    {"Basic Health Plan", "1005", "Cigna"}
-            };
+            // Search by common last names to collect contact IDs and last names
+            System.out.println("  Sampling contacts via SearchContacts...");
+            for (String name : COMMON_LAST_NAMES) {
+                try {
+                    SearchContactsResponse response = stub.searchContacts(
+                            SearchContactsRequest.newBuilder()
+                                    .setLastName(name)
+                                    .setMaxResults(500)
+                                    .build());
+                    for (ContactEntry contact : response.getContactsList()) {
+                        sampleContactIds.add(contact.getId());
+                        sampleLastNames.add(contact.getLastName().toLowerCase());
+                    }
+                } catch (Exception e) {
+                    System.err.printf("  Warning: search for '%s' failed: %s%n", name, e.getMessage());
+                }
+            }
+            System.out.printf("  Collected %d contact IDs, %d unique last names%n",
+                    sampleContactIds.size(), sampleLastNames.size());
 
-            for (String[] plan : plans) {
+            // Fetch phone numbers for a subset of contacts
+            System.out.println("  Sampling phone numbers via GetPhones...");
+            int phoneQueryLimit = Math.min(sampleContactIds.size(), 500);
+            for (int i = 0; i < phoneQueryLimit; i++) {
+                try {
+                    GetPhonesResponse phones = stub.getPhones(
+                            GetPhonesRequest.newBuilder()
+                                    .setContactId(sampleContactIds.get(i))
+                                    .build());
+                    for (ContactPhoneEntry phone : phones.getPhonesList()) {
+                        samplePhoneNumbers.add(phone.getPhoneNumber());
+                    }
+                } catch (Exception e) {
+                    // some contacts may not have phones, that's fine
+                }
+            }
+            System.out.printf("  Collected %d phone numbers%n", samplePhoneNumbers.size());
+
+            // Fetch existing plans
+            System.out.println("  Sampling plans via GetPlans...");
+            try {
+                GetPlansResponse plans = stub.getPlans(GetPlansRequest.newBuilder().build());
+                for (PlanEntry plan : plans.getPlansList()) {
+                    samplePlanIds.add(plan.getPlanId());
+                }
+                System.out.printf("  Collected %d plan IDs%n", samplePlanIds.size());
+            } catch (Exception e) {
+                System.out.println("  Warning: could not fetch plans: " + e.getMessage());
+            }
+        } finally {
+            channel.shutdownNow();
+        }
+    }
+
+    // ─── Phase 1: Scan CSV for contracts and create plans ──────────────────────
+
+    record CsvContract(int contractId, String companyName, String contractName) {}
+
+    private static void createTestPlans(String host, int port, String csvPath) throws IOException {
+        // Read contracts from companies_and_contracts.csv (same directory as the main CSV)
+        String contractsCsvPath = csvPath.substring(0, csvPath.lastIndexOf('/') + 1)
+                + "companies_and_contracts.csv";
+        List<CsvContract> contracts = new ArrayList<>();
+        try (BufferedReader reader = new BufferedReader(new FileReader(contractsCsvPath))) {
+            reader.readLine(); // skip header: contract_id,company_name,contract_name
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] fields = line.split(",", -1);
+                if (fields.length < 3) continue;
+                contracts.add(new CsvContract(
+                        Integer.parseInt(fields[0].trim()), fields[1].trim(), fields[2].trim()));
+            }
+        }
+        System.out.printf("  Loaded %d contracts from %s%n", contracts.size(), contractsCsvPath);
+
+        // Create plans via gRPC
+        ManagedChannel channel = ManagedChannelBuilder.forAddress(host, port)
+                .usePlaintext()
+                .build();
+        try {
+            ContactServiceGrpc.ContactServiceBlockingStub stub = ContactServiceGrpc.newBlockingStub(channel);
+
+            int created = 0;
+            for (CsvContract contract : contracts) {
                 CreatePlanResponse response = stub.createPlan(CreatePlanRequest.newBuilder()
-                        .setPlanName(plan[0])
-                        .setCarrierId(Integer.parseInt(plan[1]))
-                        .setCarrierName(plan[2])
+                        .setPlanName(contract.contractName())
+                        .setCarrierId(contract.contractId())
+                        .setCarrierName(contract.companyName())
                         .build());
-                samplePlanIds.add(response.getPlan().getPlanId());
-                System.out.printf("  Created plan: %s (ID: %d)%n", plan[0], response.getPlan().getPlanId());
+                long dbPlanId = response.getPlan().getPlanId();
+                contractToPlanId.put(contract.contractId(), dbPlanId);
+                samplePlanIds.add(dbPlanId);
+                created++;
+                if (created % 100 == 0 || created == contracts.size()) {
+                    System.out.printf("  Created %d / %d plans%n", created, contracts.size());
+                }
             }
         } finally {
             channel.shutdownNow();
@@ -185,9 +306,11 @@ public class GrpcLoadTest {
 
     // ─── Phase 2: Seed contacts from CSV ────────────────────────────────────────
 
+    record CsvContactEntry(ContactInput input, int contractId) {}
+
     private static void seedContactsFromCsv(String host, int port, String csvPath,
                                             int senderCount, int batchSize) throws Exception {
-        BlockingQueue<List<ContactInput>> batchQueue = new LinkedBlockingQueue<>(senderCount * 2);
+        BlockingQueue<List<CsvContactEntry>> batchQueue = new LinkedBlockingQueue<>(senderCount * 2);
         Faker faker = new Faker();
 
         Instant startTime = Instant.now();
@@ -197,12 +320,12 @@ public class GrpcLoadTest {
             try (BufferedReader reader = new BufferedReader(new FileReader(csvPath), 1 << 16)) {
                 reader.readLine(); // skip header
 
-                List<ContactInput> batch = new ArrayList<>(batchSize);
+                List<CsvContactEntry> batch = new ArrayList<>(batchSize);
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    ContactInput contact = parseCsvLine(line, faker);
-                    if (contact != null) {
-                        batch.add(contact);
+                    CsvContactEntry entry = parseCsvLine(line, faker);
+                    if (entry != null) {
+                        batch.add(entry);
                         if (batch.size() >= batchSize) {
                             batchQueue.put(batch);
                             batch = new ArrayList<>(batchSize);
@@ -238,17 +361,19 @@ public class GrpcLoadTest {
                         .build();
                 try {
                     while (true) {
-                        List<ContactInput> batch = batchQueue.take();
+                        List<CsvContactEntry> batch = batchQueue.take();
                         if (batch.isEmpty()) break; // poison pill
 
+                        List<ContactInput> inputs = batch.stream()
+                                .map(CsvContactEntry::input).toList();
+
                         BulkCreateContactsRequest request = BulkCreateContactsRequest.newBuilder()
-                                .addAllContacts(batch)
+                                .addAllContacts(inputs)
                                 .setSkipGenerateExternalIdentifiers(true)
                                 .setSkipValidateAddress(true)
                                 .build();
 
                         try {
-                            // Re-apply deadline per call
                             BulkCreateContactsResponse response =
                                     ContactServiceGrpc.newBlockingStub(channel)
                                             .withDeadlineAfter(120, TimeUnit.SECONDS)
@@ -257,7 +382,7 @@ public class GrpcLoadTest {
                             collectSamples(response, batch);
 
                             long count = seededCount.addAndGet(response.getSuccessCount());
-                            if (count % 50_000 < batch.size()) {
+                            if (count % 50_000 < inputs.size()) {
                                 double elapsed = Duration.between(startTime, Instant.now()).toMillis() / 1000.0;
                                 System.out.printf("  Progress: %,d contacts seeded (%.0f/sec)%n",
                                         count, count / elapsed);
@@ -285,10 +410,11 @@ public class GrpcLoadTest {
                 seededCount.get(), totalElapsed, seededCount.get() / totalElapsed);
     }
 
-    private static ContactInput parseCsvLine(String line, Faker faker) {
-        // CSV: first_name,last_name,street_number,street_name,street_type,city,state,zip_code,longitude,latitude
+    private static CsvContactEntry parseCsvLine(String line, Faker faker) {
+        // CSV: first_name,last_name,street_number,street_name,street_type,city,state,zip_code,
+        //      longitude,latitude,contract_id,company_name,contract_name
         String[] fields = line.split(",", -1);
-        if (fields.length < 8) return null;
+        if (fields.length < 13) return null;
 
         String firstName = fields[0].trim();
         String lastName = fields[1].trim();
@@ -300,6 +426,7 @@ public class GrpcLoadTest {
         String city = fields[5].trim();
         String state = fields[6].trim();
         String zipCode = fields[7].trim();
+        int contractId = Integer.parseInt(fields[10].trim());
 
         String streetAddress = streetNumber + " " + streetName +
                 (streetType.isEmpty() ? "" : " " + streetType);
@@ -309,7 +436,7 @@ public class GrpcLoadTest {
         String email = firstName.toLowerCase() + "." + lastName.toLowerCase() +
                 ThreadLocalRandom.current().nextInt(100000) + "@example.com";
 
-        return ContactInput.newBuilder()
+        ContactInput input = ContactInput.newBuilder()
                 .setFirstName(firstName)
                 .setLastName(lastName)
                 .addPhones(PhoneInput.newBuilder()
@@ -328,9 +455,11 @@ public class GrpcLoadTest {
                         .setZipCode(zipCode)
                         .build())
                 .build();
+
+        return new CsvContactEntry(input, contractId);
     }
 
-    private static void collectSamples(BulkCreateContactsResponse response, List<ContactInput> batch) {
+    private static void collectSamples(BulkCreateContactsResponse response, List<CsvContactEntry> batch) {
         // Reservoir sampling for contact IDs and phone numbers
         for (BulkCreateResult result : response.getResultsList()) {
             if (!result.getSuccess()) continue;
@@ -348,10 +477,14 @@ public class GrpcLoadTest {
                 }
             }
 
-            // Collect phone numbers from the corresponding input
+            // Collect data from the corresponding CSV entry
             int index = result.getIndex();
             if (index < batch.size()) {
-                ContactInput input = batch.get(index);
+                CsvContactEntry entry = batch.get(index);
+                ContactInput input = entry.input();
+
+                // Track contract assignment for sampled contacts
+                contactContractMap.put(contactId, entry.contractId());
 
                 // Reservoir sample phones
                 if (input.getPhonesCount() > 0) {
@@ -390,9 +523,21 @@ public class GrpcLoadTest {
                     .format(DateTimeFormatter.ISO_INSTANT);
 
             int assigned = 0;
+            int skipped = 0;
             for (int i = 0; i < assignCount; i++) {
                 long contactId = sampleContactIds.get(i);
-                long planId = samplePlanIds.get(i % samplePlanIds.size());
+
+                // Look up this contact's actual contract from CSV data
+                Integer csvContractId = contactContractMap.get(contactId);
+                if (csvContractId == null) {
+                    skipped++;
+                    continue;
+                }
+                Long planId = contractToPlanId.get(csvContractId);
+                if (planId == null) {
+                    skipped++;
+                    continue;
+                }
 
                 try {
                     stub.addContactPlan(AddContactPlanRequest.newBuilder()
@@ -406,7 +551,8 @@ public class GrpcLoadTest {
                     // Some may fail if contact doesn't exist, that's fine
                 }
             }
-            System.out.printf("  Assigned plans to %d contacts%n", assigned);
+            System.out.printf("  Assigned plans to %d contacts (skipped %d with no contract mapping)%n",
+                    assigned, skipped);
         } finally {
             channel.shutdownNow();
         }

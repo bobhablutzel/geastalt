@@ -1,0 +1,14 @@
+apiVersion: v2
+name: address-istio
+description: Istio service mesh configuration for address validation consumer
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - istio
+  - service-mesh
+  - mtls
+  - kafka
+  - consumer
+maintainers:
+  - name: Geastalt

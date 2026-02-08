@@ -1,0 +1,38 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: address-routing
+  labels:
+    {{- include "address-istio.labels" . | nindent 4 }}
+spec:
+  hosts:
+    - {{ .Values.gateway.host | quote }}
+  gateways:
+    - {{ .Values.gateway.name }}
+  http:
+    # gRPC traffic (port 80)
+    - match:
+        - port: 80
+      route:
+        - destination:
+            host: {{ .Values.service.name }}.{{ .Values.service.namespace }}.svc.cluster.local
+            port:
+              number: {{ .Values.service.grpcPort }}
+      timeout: {{ .Values.virtualService.timeout }}
+      retries:
+        attempts: {{ .Values.virtualService.retries.attempts }}
+        perTryTimeout: {{ .Values.virtualService.retries.perTryTimeout }}
+        retryOn: {{ .Values.virtualService.retries.retryOn }}
+    # REST traffic (port 8080)
+    - match:
+        - port: 8080
+      route:
+        - destination:
+            host: {{ .Values.service.name }}.{{ .Values.service.namespace }}.svc.cluster.local
+            port:
+              number: {{ .Values.service.httpPort }}
+      timeout: {{ .Values.virtualService.timeout }}
+      retries:
+        attempts: {{ .Values.virtualService.retries.attempts }}
+        perTryTimeout: {{ .Values.virtualService.retries.perTryTimeout }}
+        retryOn: {{ .Values.virtualService.retries.retryOn }}

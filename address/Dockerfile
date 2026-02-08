@@ -28,8 +28,8 @@ USER address
 # Copy built artifact
 COPY --from=build /app/target/*.jar app.jar
 
-# Expose management port
-EXPOSE 9011
+# Expose gRPC and management ports
+EXPOSE 9010 9011
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \

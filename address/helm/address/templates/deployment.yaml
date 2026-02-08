@@ -19,8 +19,11 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
+            - name: grpc
+              containerPort: {{ .Values.service.grpcPort }}
+              protocol: TCP
             - name: http
-              containerPort: {{ .Values.service.port }}
+              containerPort: {{ .Values.service.httpPort }}
               protocol: TCP
           env:
             - name: JAVA_TOOL_OPTIONS

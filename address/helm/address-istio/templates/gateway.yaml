@@ -1,0 +1,22 @@
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: {{ .Values.gateway.name }}
+  labels:
+    {{- include "address-istio.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- toYaml .Values.gateway.selector | nindent 4 }}
+  servers:
+    - port:
+        number: 80
+        name: grpc
+        protocol: GRPC
+      hosts:
+        - {{ .Values.gateway.host | quote }}
+    - port:
+        number: 8080
+        name: http
+        protocol: HTTP
+      hosts:
+        - {{ .Values.gateway.host | quote }}
