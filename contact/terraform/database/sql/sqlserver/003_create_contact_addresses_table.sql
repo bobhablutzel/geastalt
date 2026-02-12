@@ -1,3 +1,9 @@
+-- Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+--
+-- Licensed under a dual-license model: freely available for non-commercial use;
+-- commercial use requires a separate license. See LICENSE file for details.
+-- Contact license@geastalt.com for commercial licensing.
+
 -- SQL Server equivalent of PostgreSQL 003_create_contact_addresses_table.sql
 -- Create contact_addresses table
 -- This script is idempotent and can be run multiple times safely
@@ -7,7 +13,7 @@ BEGIN
     CREATE TABLE dbo.contact_addresses (
         id           BIGINT IDENTITY(1,1) PRIMARY KEY,
         contact_id   BIGINT NOT NULL REFERENCES dbo.contacts(id),
-        address_id   BIGINT NOT NULL REFERENCES dbo.standardized_addresses(id),
+        address_id   BIGINT NOT NULL REFERENCES dbo.addresses(id),
         address_type VARCHAR(50) NOT NULL,
         CONSTRAINT uk_contact_address_type UNIQUE (contact_id, address_type)
     );

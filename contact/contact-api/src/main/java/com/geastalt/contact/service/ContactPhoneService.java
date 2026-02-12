@@ -1,6 +1,14 @@
+/*
+ * Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+ *
+ * Licensed under a dual-license model: freely available for non-commercial use;
+ * commercial use requires a separate license. See LICENSE file for details.
+ * Contact license@geastalt.com for commercial licensing.
+ */
+
 package com.geastalt.contact.service;
 
-import com.geastalt.contact.entity.AddressType;
+import com.geastalt.contact.entity.AddressKind;
 import com.geastalt.contact.entity.Contact;
 import com.geastalt.contact.entity.ContactPhone;
 import com.geastalt.contact.repository.ContactPhoneRepository;
@@ -21,7 +29,7 @@ public class ContactPhoneService {
     private final ContactPhoneRepository contactPhoneRepository;
 
     @Transactional
-    public ContactPhone addPhoneToContact(Long contactId, String phoneNumber, AddressType phoneType) {
+    public ContactPhone addPhoneToContact(Long contactId, String phoneNumber, AddressKind phoneType) {
         log.info("Adding phone {} of type {} to contact {}", phoneNumber, phoneType, contactId);
 
         Contact contact = contactRepository.findById(contactId)
@@ -46,7 +54,7 @@ public class ContactPhoneService {
     }
 
     @Transactional
-    public ContactPhone updateContactPhone(Long contactId, String phoneNumber, AddressType phoneType) {
+    public ContactPhone updateContactPhone(Long contactId, String phoneNumber, AddressKind phoneType) {
         log.info("Updating phone type {} for contact {} to {}", phoneType, contactId, phoneNumber);
 
         Contact contact = contactRepository.findById(contactId)
@@ -72,7 +80,7 @@ public class ContactPhoneService {
     }
 
     @Transactional
-    public void removeContactPhone(Long contactId, AddressType phoneType) {
+    public void removeContactPhone(Long contactId, AddressKind phoneType) {
         log.info("Removing phone type {} from contact {}", phoneType, contactId);
 
         contactPhoneRepository.findByContactIdAndPhoneType(contactId, phoneType)

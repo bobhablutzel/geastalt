@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+ *
+ * Licensed under a dual-license model: freely available for non-commercial use;
+ * commercial use requires a separate license. See LICENSE file for details.
+ * Contact license@geastalt.com for commercial licensing.
+ */
+
 package com.geastalt.contact;
 
 import com.geastalt.contact.grpc.*;
@@ -450,11 +458,12 @@ public class GrpcLoadTest {
                         .setEmailType(EmailType.EMAIL_HOME)
                         .build())
                 .addAddresses(AddressInput.newBuilder()
-                        .setAddressType(com.geastalt.contact.grpc.AddressType.HOME)
-                        .setStreetAddress(streetAddress)
-                        .setCity(city)
-                        .setState(state)
-                        .setZipCode(zipCode)
+                        .setAddressType(AddressType.HOME)
+                        .addAddressLines(streetAddress)
+                        .setLocality(city)
+                        .setAdministrativeArea(state)
+                        .setPostalCode(zipCode)
+                        .setCountryCode("US")
                         .build())
                 .build();
 

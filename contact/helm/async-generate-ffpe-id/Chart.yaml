@@ -1,0 +1,18 @@
+# Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+#
+# Licensed under a dual-license model: freely available for non-commercial use;
+# commercial use requires a separate license. See LICENSE file for details.
+# Contact license@geastalt.com for commercial licensing.
+
+apiVersion: v2
+name: async-generate-ffpe-id
+description: Kafka consumer for generating Feistel FPE-based external identifiers
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - contact
+  - kafka
+  - consumer
+maintainers:
+  - name: Geastalt

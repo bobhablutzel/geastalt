@@ -1,13 +1,19 @@
+# Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+#
+# Licensed under a dual-license model: freely available for non-commercial use;
+# commercial use requires a separate license. See LICENSE file for details.
+# Contact license@geastalt.com for commercial licensing.
+
 apiVersion: v2
 name: address
-description: Kafka consumer for address validation using USPS API
+description: gRPC address validation and format verification service
 type: application
 version: 0.1.0
 appVersion: "1.0.0"
 keywords:
   - address
-  - kafka
-  - consumer
+  - grpc
+  - validation
   - usps
 maintainers:
   - name: Geastalt

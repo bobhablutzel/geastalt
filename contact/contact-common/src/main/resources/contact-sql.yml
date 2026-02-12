@@ -1,47 +1,65 @@
+# Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+#
+# Licensed under a dual-license model: freely available for non-commercial use;
+# commercial use requires a separate license. See LICENSE file for details.
+# Contact license@geastalt.com for commercial licensing.
+
 contact:
   sql:
     search:
       by-name-exact: >-
         SELECT m.id, m.first_name, m.last_name,
         me.email as preferred_email,
-        sa.street_address, sa.secondary_address, sa.city, sa.state, sa.zip_code, sa.zip_plus4
+        al1.line_value as address_line_1, al2.line_value as address_line_2,
+        sa.locality, sa.administrative_area, sa.postal_code, sa.country_code
         FROM contacts m
         LEFT JOIN contact_emails me ON me.contact_id = m.id AND me.preferred = true
         LEFT JOIN contact_addresses ma ON ma.contact_id = m.id AND ma.preferred = true
-        LEFT JOIN standardized_addresses sa ON sa.id = ma.address_id
+        LEFT JOIN addresses sa ON sa.id = ma.address_id
+        LEFT JOIN address_lines al1 ON al1.address_id = sa.id AND al1.line_order = 1
+        LEFT JOIN address_lines al2 ON al2.address_id = sa.id AND al2.line_order = 2
         WHERE m.last_name_lower = :lastName
         LIMIT :limit
 
       by-name-exact-with-first-name: >-
         SELECT m.id, m.first_name, m.last_name,
         me.email as preferred_email,
-        sa.street_address, sa.secondary_address, sa.city, sa.state, sa.zip_code, sa.zip_plus4
+        al1.line_value as address_line_1, al2.line_value as address_line_2,
+        sa.locality, sa.administrative_area, sa.postal_code, sa.country_code
         FROM contacts m
         LEFT JOIN contact_emails me ON me.contact_id = m.id AND me.preferred = true
         LEFT JOIN contact_addresses ma ON ma.contact_id = m.id AND ma.preferred = true
-        LEFT JOIN standardized_addresses sa ON sa.id = ma.address_id
+        LEFT JOIN addresses sa ON sa.id = ma.address_id
+        LEFT JOIN address_lines al1 ON al1.address_id = sa.id AND al1.line_order = 1
+        LEFT JOIN address_lines al2 ON al2.address_id = sa.id AND al2.line_order = 2
         WHERE m.last_name_lower = :lastName AND m.first_name_lower = :firstName
         LIMIT :limit
 
       by-name-prefix: >-
         SELECT m.id, m.first_name, m.last_name,
         me.email as preferred_email,
-        sa.street_address, sa.secondary_address, sa.city, sa.state, sa.zip_code, sa.zip_plus4
+        al1.line_value as address_line_1, al2.line_value as address_line_2,
+        sa.locality, sa.administrative_area, sa.postal_code, sa.country_code
         FROM contacts m
         LEFT JOIN contact_emails me ON me.contact_id = m.id AND me.preferred = true
         LEFT JOIN contact_addresses ma ON ma.contact_id = m.id AND ma.preferred = true
-        LEFT JOIN standardized_addresses sa ON sa.id = ma.address_id
+        LEFT JOIN addresses sa ON sa.id = ma.address_id
+        LEFT JOIN address_lines al1 ON al1.address_id = sa.id AND al1.line_order = 1
+        LEFT JOIN address_lines al2 ON al2.address_id = sa.id AND al2.line_order = 2
         WHERE m.last_name_lower LIKE :lastNamePattern
         LIMIT :limit
 
       by-name-prefix-with-first-name: >-
         SELECT m.id, m.first_name, m.last_name,
         me.email as preferred_email,
-        sa.street_address, sa.secondary_address, sa.city, sa.state, sa.zip_code, sa.zip_plus4
+        al1.line_value as address_line_1, al2.line_value as address_line_2,
+        sa.locality, sa.administrative_area, sa.postal_code, sa.country_code
         FROM contacts m
         LEFT JOIN contact_emails me ON me.contact_id = m.id AND me.preferred = true
         LEFT JOIN contact_addresses ma ON ma.contact_id = m.id AND ma.preferred = true
-        LEFT JOIN standardized_addresses sa ON sa.id = ma.address_id
+        LEFT JOIN addresses sa ON sa.id = ma.address_id
+        LEFT JOIN address_lines al1 ON al1.address_id = sa.id AND al1.line_order = 1
+        LEFT JOIN address_lines al2 ON al2.address_id = sa.id AND al2.line_order = 2
         WHERE m.last_name_lower LIKE :lastNamePattern AND m.first_name_lower LIKE :firstNamePattern
         LIMIT :limit
 
@@ -66,11 +84,14 @@ contact:
       find-by-id: >-
         SELECT m.id, m.first_name, m.last_name,
         me.email as preferred_email,
-        sa.street_address, sa.secondary_address, sa.city, sa.state, sa.zip_code, sa.zip_plus4
+        al1.line_value as address_line_1, al2.line_value as address_line_2,
+        sa.locality, sa.administrative_area, sa.postal_code, sa.country_code
         FROM contacts m
         LEFT JOIN contact_emails me ON me.contact_id = m.id AND me.preferred = true
         LEFT JOIN contact_addresses ma ON ma.contact_id = m.id AND ma.preferred = true
-        LEFT JOIN standardized_addresses sa ON sa.id = ma.address_id
+        LEFT JOIN addresses sa ON sa.id = ma.address_id
+        LEFT JOIN address_lines al1 ON al1.address_id = sa.id AND al1.line_order = 1
+        LEFT JOIN address_lines al2 ON al2.address_id = sa.id AND al2.line_order = 2
         WHERE m.id = :contactId
 
       fetch-alternate-ids: >-
@@ -82,12 +103,15 @@ contact:
       search-by-phone: >-
         SELECT m.id, m.first_name, m.last_name,
         me.email as preferred_email,
-        sa.street_address, sa.secondary_address, sa.city, sa.state, sa.zip_code, sa.zip_plus4
+        al1.line_value as address_line_1, al2.line_value as address_line_2,
+        sa.locality, sa.administrative_area, sa.postal_code, sa.country_code
         FROM contacts m
         INNER JOIN contact_phones mp ON mp.contact_id = m.id
         LEFT JOIN contact_emails me ON me.contact_id = m.id AND me.preferred = true
         LEFT JOIN contact_addresses ma ON ma.contact_id = m.id AND ma.preferred = true
-        LEFT JOIN standardized_addresses sa ON sa.id = ma.address_id
+        LEFT JOIN addresses sa ON sa.id = ma.address_id
+        LEFT JOIN address_lines al1 ON al1.address_id = sa.id AND al1.line_order = 1
+        LEFT JOIN address_lines al2 ON al2.address_id = sa.id AND al2.line_order = 2
         WHERE mp.phone_number = :phoneNumber
         LIMIT :limit
 
@@ -102,8 +126,11 @@ contact:
         INSERT INTO contact_emails (contact_id, email, email_type, preferred) VALUES (?, ?, ?, ?)
 
       insert-address: >-
-        INSERT INTO standardized_addresses (street_address, secondary_address, city, state, zip_code, zip_plus4)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO addresses (locality, administrative_area, postal_code, country_code)
+        VALUES (?, ?, ?, ?)
+
+      insert-address-line: >-
+        INSERT INTO address_lines (address_id, line_order, line_value) VALUES (?, ?, ?)
 
       insert-contact-address: >-
         INSERT INTO contact_addresses (contact_id, address_id, address_type, preferred) VALUES (?, ?, ?, ?)
@@ -114,14 +141,3 @@ contact:
       insert-contact-lookup: >-
         INSERT INTO contact_lookup (contact_id, partition_number, created_at) VALUES (?, ?, ?)
 
-    controller:
-      find-contacts-without-alternate-id: >-
-        SELECT m.id FROM contacts m
-        WHERE NOT EXISTS (
-          SELECT 1 FROM contact_alternate_ids mai
-          WHERE mai.contact_id = m.id AND mai.id_type = 'NEW_NATIONS'
-        )
-        ORDER BY m.id LIMIT ?
-
-      insert-alternate-id: >-
-        INSERT INTO contact_alternate_ids (contact_id, id_type, alternate_id, created_at) VALUES (?, 'NEW_NATIONS', ?, ?)

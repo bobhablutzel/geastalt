@@ -1,3 +1,9 @@
+-- Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+--
+-- Licensed under a dual-license model: freely available for non-commercial use;
+-- commercial use requires a separate license. See LICENSE file for details.
+-- Contact license@geastalt.com for commercial licensing.
+
 -- Create functional indexes for case-insensitive name search (MySQL equivalent of PostgreSQL migration 006)
 -- MySQL functional indexes (8.0.13+) replace PostgreSQL's LOWER() with varchar_pattern_ops
 

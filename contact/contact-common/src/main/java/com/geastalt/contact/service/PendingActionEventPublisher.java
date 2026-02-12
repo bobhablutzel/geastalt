@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+ *
+ * Licensed under a dual-license model: freely available for non-commercial use;
+ * commercial use requires a separate license. See LICENSE file for details.
+ * Contact license@geastalt.com for commercial licensing.
+ */
+
 package com.geastalt.contact.service;
 
 import com.geastalt.contact.entity.PendingActionType;
@@ -16,9 +24,6 @@ public class PendingActionEventPublisher {
 
     @Value("${contact.pending-actions.topics.generate-external-identifiers}")
     private String generateExternalIdentifiersTopic;
-
-    @Value("${contact.pending-actions.topics.validate-address}")
-    private String validateAddressTopic;
 
     public void publishPendingAction(Long contactId, PendingActionType actionType) {
         String topic = getTopicForActionType(actionType);
@@ -40,7 +45,6 @@ public class PendingActionEventPublisher {
     private String getTopicForActionType(PendingActionType actionType) {
         return switch (actionType) {
             case GENERATE_EXTERNAL_IDENTIFIERS -> generateExternalIdentifiersTopic;
-            case VALIDATE_ADDRESS -> validateAddressTopic;
         };
     }
 }

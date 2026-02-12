@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+
+# Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+#
+# Licensed under a dual-license model: freely available for non-commercial use;
+# commercial use requires a separate license. See LICENSE file for details.
+# Contact license@geastalt.com for commercial licensing.
+
 # ============================================================================
 # Test Environment Setup Script
 # ============================================================================
@@ -21,6 +28,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
 LOG_FILE="$SCRIPT_DIR/setup.log"
+K8S_NAMESPACE="geastalt"
+ISTIO_GATEWAY_PORT="9080"
 
 # ANSI colors
 RED='\033[0;31m'
@@ -82,6 +91,7 @@ DB_NAME=${DB_NAME:-contact}
 DB_USER=${DB_USER:-bob}
 DB_PASSWORD=${DB_PASSWORD:-}
 DEPLOY_MODE=${DEPLOY_MODE:-}
+K8S_NAMESPACE=${K8S_NAMESPACE:-geastalt}
 EOF
     chmod 600 "$ENV_FILE"
     success "Configuration saved to $ENV_FILE"
@@ -139,6 +149,27 @@ check_deploy_tools() {
             return 1
             ;;
     esac
+}
+
+# Wait for the Kubernetes API server to become responsive
+# Istio installation adds many CRDs/pods and can temporarily overwhelm minikube
+wait_for_apiserver() {
+    local max_wait="${1:-60}"
+    local waited=0
+    while [[ $waited -lt $max_wait ]]; do
+        if kubectl get nodes &>/dev/null; then
+            return 0
+        fi
+        if [[ $waited -eq 0 ]]; then
+            info "Waiting for Kubernetes API server to become responsive..."
+        fi
+        sleep 5
+        ((waited += 5))
+        printf "\r  Waiting... %ds / %ds" "$waited" "$max_wait"
+    done
+    echo ""
+    error "Kubernetes API server not responsive after ${max_wait}s"
+    return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -448,6 +479,55 @@ deploy_services() {
     esac
 }
 
+# ---------------------------------------------------------------------------
+# Istio installation
+# ---------------------------------------------------------------------------
+install_istio() {
+    info "Checking Istio installation..."
+
+    # Check if istioctl is available
+    if ! command -v istioctl &>/dev/null; then
+        warn "istioctl not found — installing..."
+        local istio_version="1.24.3"
+        curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$istio_version sh - 2>&1 | tail -3
+        export PATH="$PWD/istio-$istio_version/bin:$PATH"
+        if ! command -v istioctl &>/dev/null; then
+            error "Failed to install istioctl"
+            return 1
+        fi
+        success "istioctl installed (version $istio_version)"
+    else
+        success "istioctl found: $(istioctl version --short 2>/dev/null | head -1)"
+    fi
+
+    # Check if Istio is already installed on the cluster
+    if istioctl verify-install &>/dev/null 2>&1; then
+        success "Istio is already installed on the cluster"
+    else
+        info "Installing Istio with demo profile..."
+        if istioctl install --set profile=demo -y 2>&1 | tee -a "$LOG_FILE"; then
+            success "Istio installed successfully"
+        else
+            error "Istio installation failed"
+            return 1
+        fi
+    fi
+
+    # Create namespace if it doesn't exist
+    info "Ensuring namespace $K8S_NAMESPACE exists..."
+    kubectl create namespace "$K8S_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >> "$LOG_FILE" 2>&1
+
+    # Label namespace for sidecar injection
+    info "Labeling namespace for Istio sidecar injection..."
+    kubectl label namespace "$K8S_NAMESPACE" istio-injection=enabled --overwrite >> "$LOG_FILE" 2>&1
+    success "Namespace $K8S_NAMESPACE labeled for Istio sidecar injection"
+
+    # Wait for istio-system pods to be ready
+    info "Waiting for Istio system pods to be ready..."
+    kubectl wait --for=condition=Ready pods --all -n istio-system --timeout=120s 2>&1 | tail -3
+    success "Istio system pods are ready"
+}
+
 deploy_kubernetes() {
     DEPLOY_MODE="kubernetes"
     load_env 2>/dev/null || true
@@ -470,30 +550,50 @@ deploy_kubernetes() {
     fi
     success "minikube is running"
 
+    # Create namespace and install Istio
+    info "Ensuring namespace $K8S_NAMESPACE exists..."
+    kubectl create namespace "$K8S_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >> "$LOG_FILE" 2>&1
+    install_istio || warn "Istio setup had issues — continuing with deployment"
+
+    # Wait for API server to stabilize after Istio installation
+    wait_for_apiserver 90 || return 1
+
     # Set Docker env to minikube
     info "Configuring Docker environment for minikube..."
     eval "$(minikube docker-env)"
 
     # Build Docker images
     info "Building contact-api Docker image..."
-    docker build -t contact-api:latest -f "$REPO_ROOT/contact/contact-api/Dockerfile" "$REPO_ROOT/contact" 2>&1 | tail -1
-    success "contact-api image built"
+    if docker build -t contact-api:latest -f "$REPO_ROOT/contact/contact-api/Dockerfile" "$REPO_ROOT/contact" >> "$LOG_FILE" 2>&1; then
+        success "contact-api image built"
+    else
+        error "contact-api Docker build failed — check $LOG_FILE"
+        return 1
+    fi
 
-    info "Building contact-consumer-ids Docker image..."
-    docker build -t contact-consumer-ids:latest -f "$REPO_ROOT/contact/contact-consumer-ids/Dockerfile" "$REPO_ROOT/contact" 2>&1 | tail -1
-    success "contact-consumer-ids image built"
+    info "Building async-generate-ffpe-id Docker image..."
+    if docker build -t async-generate-ffpe-id:latest -f "$REPO_ROOT/contact/async-generate-ffpe-id/Dockerfile" "$REPO_ROOT/contact" >> "$LOG_FILE" 2>&1; then
+        success "async-generate-ffpe-id image built"
+    else
+        error "async-generate-ffpe-id Docker build failed — check $LOG_FILE"
+        return 1
+    fi
 
     info "Building address Docker image..."
-    docker build -t address:latest "$REPO_ROOT/address" 2>&1 | tail -1
-    success "address image built"
+    if docker build -t address:latest "$REPO_ROOT/address" >> "$LOG_FILE" 2>&1; then
+        success "address image built"
+    else
+        error "address Docker build failed — check $LOG_FILE"
+        return 1
+    fi
 
     # Deploy Kafka if not running
     info "Checking Kafka deployment..."
-    if ! kubectl get deployment kafka &>/dev/null; then
+    if ! kubectl get deployment kafka -n "$K8S_NAMESPACE" &>/dev/null; then
         info "Deploying Kafka..."
-        kubectl apply -f "$REPO_ROOT/contact/k8s/kafka.yaml"
+        kubectl apply -f "$REPO_ROOT/contact/k8s/kafka.yaml" -n "$K8S_NAMESPACE"
         info "Waiting for Kafka to be ready..."
-        kubectl rollout status deployment/kafka --timeout=120s || warn "Kafka rollout timed out"
+        kubectl rollout status deployment/kafka -n "$K8S_NAMESPACE" --timeout=120s || warn "Kafka rollout timed out"
     else
         success "Kafka already deployed"
     fi
@@ -502,13 +602,13 @@ deploy_kubernetes() {
     info "Checking Kubernetes secrets..."
     local missing_secrets=()
 
-    if ! kubectl get secret external-fpe-key-secret &>/dev/null; then
+    if ! kubectl get secret external-fpe-key-secret -n "$K8S_NAMESPACE" &>/dev/null; then
         missing_secrets+=("external-fpe-key-secret")
     fi
-    if ! kubectl get secret contact-consumer-ids-secret &>/dev/null; then
-        missing_secrets+=("contact-consumer-ids-secret")
+    if ! kubectl get secret async-generate-ffpe-id-secret -n "$K8S_NAMESPACE" &>/dev/null; then
+        missing_secrets+=("async-generate-ffpe-id-secret")
     fi
-    if ! kubectl get secret address-secret &>/dev/null; then
+    if ! kubectl get secret address-secret -n "$K8S_NAMESPACE" &>/dev/null; then
         missing_secrets+=("address-secret")
     fi
 
@@ -525,8 +625,8 @@ deploy_kubernetes() {
                     echo "    --from-literal=USPS_CLIENT_SECRET=<secret> \\"
                     echo "    --from-literal=CONTACT_EXTERNAL_ID_KEY=<key>"
                     ;;
-                contact-consumer-ids-secret)
-                    echo "  kubectl create secret generic contact-consumer-ids-secret \\"
+                async-generate-ffpe-id-secret)
+                    echo "  kubectl create secret generic async-generate-ffpe-id-secret \\"
                     echo "    --from-literal=DB_PASSWORD=<password> \\"
                     echo "    --from-literal=CONTACT_EXTERNAL_ID_KEY=<key>"
                     ;;
@@ -549,51 +649,124 @@ deploy_kubernetes() {
     fi
 
     # Helm install/upgrade (use in-cluster Kafka since we deploy it inside K8s)
-    info "Deploying contact-api via Helm..."
-    helm upgrade --install contact-api "$REPO_ROOT/contact/helm/contact-api" \
-        --set kafka.bootstrapServers=kafka:9092 --wait --timeout 180s 2>&1 | tail -1
-    success "contact-api deployed"
+    local helm_errors=0
 
-    info "Deploying contact-consumer-ids via Helm..."
-    helm upgrade --install contact-consumer-ids "$REPO_ROOT/contact/helm/contact-consumer-ids" \
-        --wait --timeout 180s 2>&1 | tail -1
-    success "contact-consumer-ids deployed"
+    info "Deploying contact-api via Helm..."
+    if helm upgrade --install contact-api "$REPO_ROOT/contact/helm/contact-api" \
+        --set kafka.bootstrapServers=kafka:9092 -n "$K8S_NAMESPACE" --create-namespace \
+        --wait --timeout 180s >> "$LOG_FILE" 2>&1; then
+        success "contact-api deployed"
+    else
+        error "contact-api helm deploy failed — check $LOG_FILE"
+        ((helm_errors++))
+    fi
+
+    info "Deploying async-generate-ffpe-id via Helm..."
+    if helm upgrade --install async-generate-ffpe-id "$REPO_ROOT/contact/helm/async-generate-ffpe-id" \
+        -n "$K8S_NAMESPACE" --create-namespace --wait --timeout 180s >> "$LOG_FILE" 2>&1; then
+        success "async-generate-ffpe-id deployed"
+    else
+        error "async-generate-ffpe-id helm deploy failed — check $LOG_FILE"
+        ((helm_errors++))
+    fi
 
     if [[ -d "$REPO_ROOT/contact/helm/contact-istio" ]]; then
         info "Deploying contact-istio via Helm..."
-        helm upgrade --install contact-istio "$REPO_ROOT/contact/helm/contact-istio" --wait --timeout 60s 2>&1 | tail -1
-        success "contact-istio deployed"
+        if helm upgrade --install contact-istio "$REPO_ROOT/contact/helm/contact-istio" \
+            -n "$K8S_NAMESPACE" --set service.namespace="$K8S_NAMESPACE" \
+            --wait --timeout 60s >> "$LOG_FILE" 2>&1; then
+            success "contact-istio deployed"
+        else
+            error "contact-istio helm deploy failed — check $LOG_FILE"
+            ((helm_errors++))
+        fi
     fi
 
     if [[ -d "$REPO_ROOT/address/helm/address" ]]; then
         info "Deploying address via Helm..."
-        helm upgrade --install address "$REPO_ROOT/address/helm/address" --wait --timeout 120s 2>&1 | tail -1
-        success "address deployed"
+        if helm upgrade --install address "$REPO_ROOT/address/helm/address" \
+            -n "$K8S_NAMESPACE" --create-namespace --wait --timeout 120s >> "$LOG_FILE" 2>&1; then
+            success "address deployed"
+        else
+            error "address helm deploy failed — check $LOG_FILE"
+            ((helm_errors++))
+        fi
     fi
 
     if [[ -d "$REPO_ROOT/address/helm/address-istio" ]]; then
         info "Deploying address-istio via Helm..."
-        helm upgrade --install address-istio "$REPO_ROOT/address/helm/address-istio" --wait --timeout 60s 2>&1 | tail -1
-        success "address-istio deployed"
+        if helm upgrade --install address-istio "$REPO_ROOT/address/helm/address-istio" \
+            -n "$K8S_NAMESPACE" --set service.namespace="$K8S_NAMESPACE" \
+            --wait --timeout 60s >> "$LOG_FILE" 2>&1; then
+            success "address-istio deployed"
+        else
+            error "address-istio helm deploy failed — check $LOG_FILE"
+            ((helm_errors++))
+        fi
+    fi
+
+    if [[ $helm_errors -gt 0 ]]; then
+        error "$helm_errors helm deployment(s) failed"
+        echo ""
+        echo "  This often happens when the API server is overwhelmed after Istio installation."
+        echo "  Wait a minute and retry option 3, or check: kubectl get pods -n $K8S_NAMESPACE"
+        return 1
     fi
 
     # Wait for rollout (Hibernate ddl-auto may take a while with large datasets)
     info "Waiting for deployments to be ready..."
-    kubectl rollout status deployment/contact-api --timeout=300s || warn "contact-api rollout timed out"
+    kubectl rollout status deployment/contact-api -n "$K8S_NAMESPACE" --timeout=300s || {
+        warn "contact-api rollout timed out"
+    }
 
-    # Port forward
+    # Restart deployments so pods pick up Istio sidecars
+    info "Restarting deployments to inject Istio sidecars..."
+    kubectl rollout restart deployment/contact-api -n "$K8S_NAMESPACE" >> "$LOG_FILE" 2>&1 || true
+    kubectl rollout restart deployment/async-generate-ffpe-id -n "$K8S_NAMESPACE" >> "$LOG_FILE" 2>&1 || true
+    kubectl rollout restart deployment/address -n "$K8S_NAMESPACE" >> "$LOG_FILE" 2>&1 || true
+    info "Waiting for pods to be ready with sidecars..."
+    kubectl rollout status deployment/contact-api -n "$K8S_NAMESPACE" --timeout=300s || {
+        warn "contact-api rollout timed out after sidecar restart"
+    }
+
+    # Set up port-forwards for gRPC access
     echo ""
-    info "Setting up port-forward for gRPC (localhost:9001)..."
-    # Kill any existing port-forward
+    wait_for_apiserver 60 || true
+
+    if kubectl get svc istio-ingressgateway -n istio-system &>/dev/null; then
+        info "Setting up port-forward to Istio ingress gateway (localhost:$ISTIO_GATEWAY_PORT → load-balanced)..."
+        pkill -f "kubectl port-forward.*istio-ingressgateway.*$ISTIO_GATEWAY_PORT" 2>/dev/null || true
+        kubectl port-forward svc/istio-ingressgateway -n istio-system "$ISTIO_GATEWAY_PORT":80 &>/dev/null &
+        local gw_pid=$!
+        sleep 3
+
+        if kill -0 "$gw_pid" 2>/dev/null; then
+            success "Ingress gateway port-forward active (PID $gw_pid) — gRPC at localhost:$ISTIO_GATEWAY_PORT (round-robin across all pods)"
+            echo ""
+            echo "  Use this for load-balanced gRPC access:"
+            echo "    grpcurl -plaintext localhost:$ISTIO_GATEWAY_PORT list"
+            echo ""
+            echo "  For load testing (option 5), use:"
+            echo "    Host: localhost   Port: $ISTIO_GATEWAY_PORT"
+        else
+            warn "Ingress gateway port-forward failed — you may need to run:"
+            echo "    kubectl port-forward svc/istio-ingressgateway -n istio-system $ISTIO_GATEWAY_PORT:80 &"
+        fi
+    else
+        warn "Istio ingress gateway not found — skipping gateway port-forward"
+    fi
+
+    # Also set up direct pod port-forward as a fallback
+    info "Setting up port-forward for direct pod access (localhost:9001)..."
     pkill -f "kubectl port-forward.*contact-api.*9001" 2>/dev/null || true
-    kubectl port-forward service/contact-api 9001:9001 &>/dev/null &
+    kubectl port-forward service/contact-api 9001:9001 -n "$K8S_NAMESPACE" &>/dev/null &
     local pf_pid=$!
     sleep 2
 
     if kill -0 "$pf_pid" 2>/dev/null; then
-        success "Port-forward active (PID $pf_pid) — gRPC at localhost:9001"
+        success "Port-forward active (PID $pf_pid) — gRPC at localhost:9001 (single-pod, no load balancing)"
     else
-        warn "Port-forward failed — you may need to run: kubectl port-forward service/contact-api 9001:9001"
+        warn "Port-forward failed — you may need to run: kubectl port-forward service/contact-api 9001:9001 -n $K8S_NAMESPACE"
     fi
 }
 
@@ -705,7 +878,7 @@ create_k8s_secrets() {
         return 1
     fi
 
-    # External ID key (contact-consumer-ids only)
+    # External ID key (async-generate-ffpe-id only)
     echo ""
     read -rsp "Contact External ID Key (CONTACT_EXTERNAL_ID_KEY): " external_id_key
     stty echo
@@ -718,14 +891,18 @@ create_k8s_secrets() {
     echo ""
     info "Secrets to create:"
     echo "  external-fpe-key-secret       DB_PASSWORD, USPS_CLIENT_ID, USPS_CLIENT_SECRET, CONTACT_EXTERNAL_ID_KEY"
-    echo "  contact-consumer-ids-secret   DB_PASSWORD, CONTACT_EXTERNAL_ID_KEY"
+    echo "  async-generate-ffpe-id-secret   DB_PASSWORD, CONTACT_EXTERNAL_ID_KEY"
     echo "  address-secret                DB_PASSWORD, USPS_CLIENT_ID, USPS_CLIENT_SECRET"
     echo ""
 
+    # Ensure namespace exists
+    info "Ensuring namespace $K8S_NAMESPACE exists..."
+    kubectl create namespace "$K8S_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >> "$LOG_FILE" 2>&1
+
     # Check for existing secrets and warn
     local existing=()
-    for secret in external-fpe-key-secret contact-consumer-ids-secret address-secret; do
-        if kubectl get secret "$secret" &>/dev/null; then
+    for secret in external-fpe-key-secret async-generate-ffpe-id-secret address-secret; do
+        if kubectl get secret "$secret" -n "$K8S_NAMESPACE" &>/dev/null; then
             existing+=("$secret")
         fi
     done
@@ -739,13 +916,13 @@ create_k8s_secrets() {
         fi
         echo ""
         for secret in "${existing[@]}"; do
-            kubectl delete secret "$secret" >> "$LOG_FILE" 2>&1
+            kubectl delete secret "$secret" -n "$K8S_NAMESPACE" >> "$LOG_FILE" 2>&1
         done
     fi
 
     # Create external-fpe-key-secret (contact-api)
     info "Creating external-fpe-key-secret..."
-    if kubectl create secret generic external-fpe-key-secret \
+    if kubectl create secret generic external-fpe-key-secret -n "$K8S_NAMESPACE" \
         --from-literal=DB_PASSWORD="$db_password" \
         --from-literal=USPS_CLIENT_ID="$usps_client_id" \
         --from-literal=USPS_CLIENT_SECRET="$usps_client_secret" \
@@ -756,20 +933,20 @@ create_k8s_secrets() {
         return 1
     fi
 
-    # Create contact-consumer-ids-secret
-    info "Creating contact-consumer-ids-secret..."
-    if kubectl create secret generic contact-consumer-ids-secret \
+    # Create async-generate-ffpe-id-secret
+    info "Creating async-generate-ffpe-id-secret..."
+    if kubectl create secret generic async-generate-ffpe-id-secret -n "$K8S_NAMESPACE" \
         --from-literal=DB_PASSWORD="$db_password" \
         --from-literal=CONTACT_EXTERNAL_ID_KEY="$external_id_key" >> "$LOG_FILE" 2>&1; then
-        success "contact-consumer-ids-secret created"
+        success "async-generate-ffpe-id-secret created"
     else
-        error "Failed to create contact-consumer-ids-secret"
+        error "Failed to create async-generate-ffpe-id-secret"
         return 1
     fi
 
     # Create address-secret
     info "Creating address-secret..."
-    if kubectl create secret generic address-secret \
+    if kubectl create secret generic address-secret -n "$K8S_NAMESPACE" \
         --from-literal=DB_PASSWORD="$db_password" \
         --from-literal=USPS_CLIENT_ID="$usps_client_id" \
         --from-literal=USPS_CLIENT_SECRET="$usps_client_secret" >> "$LOG_FILE" 2>&1; then
@@ -781,6 +958,112 @@ create_k8s_secrets() {
 
     echo ""
     success "All Kubernetes secrets created"
+}
+
+# ---------------------------------------------------------------------------
+# Option 8: Install/Configure Istio
+# ---------------------------------------------------------------------------
+install_configure_istio() {
+    echo ""
+    echo -e "${BOLD}=== Install/Configure Istio ===${NC}"
+    echo ""
+
+    check_tool kubectl || return 1
+    check_tool helm || return 1
+
+    # Verify cluster access
+    if ! kubectl cluster-info &>/dev/null; then
+        error "Cannot reach Kubernetes cluster — is minikube running?"
+        return 1
+    fi
+    success "Kubernetes cluster is reachable"
+    echo ""
+
+    # Install Istio
+    install_istio || return 1
+
+    # Wait for API server to stabilize after Istio installation
+    wait_for_apiserver 90 || return 1
+    echo ""
+
+    # Deploy Istio Helm charts
+    if [[ -d "$REPO_ROOT/contact/helm/contact-istio" ]]; then
+        info "Deploying contact-istio via Helm..."
+        if helm upgrade --install contact-istio "$REPO_ROOT/contact/helm/contact-istio" \
+            -n "$K8S_NAMESPACE" --set service.namespace="$K8S_NAMESPACE" \
+            --wait --timeout 60s >> "$LOG_FILE" 2>&1; then
+            success "contact-istio deployed"
+        else
+            error "contact-istio helm deploy failed — check $LOG_FILE"
+            return 1
+        fi
+    fi
+
+    if [[ -d "$REPO_ROOT/address/helm/address-istio" ]]; then
+        info "Deploying address-istio via Helm..."
+        if helm upgrade --install address-istio "$REPO_ROOT/address/helm/address-istio" \
+            -n "$K8S_NAMESPACE" --set service.namespace="$K8S_NAMESPACE" \
+            --wait --timeout 60s >> "$LOG_FILE" 2>&1; then
+            success "address-istio deployed"
+        else
+            error "address-istio helm deploy failed — check $LOG_FILE"
+            return 1
+        fi
+    fi
+
+    # Restart deployments to inject sidecars
+    echo ""
+    info "Restarting deployments to inject Istio sidecars..."
+    local deployments=()
+    for dep in contact-api async-generate-ffpe-id address; do
+        if kubectl get deployment "$dep" -n "$K8S_NAMESPACE" &>/dev/null; then
+            deployments+=("$dep")
+            kubectl rollout restart deployment/"$dep" -n "$K8S_NAMESPACE" >> "$LOG_FILE" 2>&1
+        fi
+    done
+
+    if [[ ${#deployments[@]} -gt 0 ]]; then
+        info "Waiting for deployments to be ready with sidecars..."
+        for dep in "${deployments[@]}"; do
+            kubectl rollout status deployment/"$dep" -n "$K8S_NAMESPACE" --timeout=300s 2>/dev/null || \
+                warn "$dep rollout timed out"
+        done
+    fi
+
+    # Verify sidecar injection
+    echo ""
+    info "Verifying sidecar injection..."
+    local pods_ready
+    pods_ready=$(kubectl get pods -n "$K8S_NAMESPACE" --no-headers 2>/dev/null || true)
+    if [[ -n "$pods_ready" ]]; then
+        echo ""
+        echo "  Pod status (2/2 = sidecar injected):"
+        kubectl get pods -n "$K8S_NAMESPACE" --no-headers 2>/dev/null | while IFS= read -r line; do
+            echo "    $line"
+        done
+    fi
+
+    # Port-forward to Istio ingress gateway for load-balanced access
+    echo ""
+    info "Setting up port-forward to Istio ingress gateway (localhost:$ISTIO_GATEWAY_PORT)..."
+    pkill -f "kubectl port-forward.*istio-ingressgateway.*$ISTIO_GATEWAY_PORT" 2>/dev/null || true
+    kubectl port-forward svc/istio-ingressgateway -n istio-system "$ISTIO_GATEWAY_PORT":80 &>/dev/null &
+    local gw_pid=$!
+    sleep 2
+
+    echo ""
+    if kill -0 "$gw_pid" 2>/dev/null; then
+        success "Ingress gateway port-forward active (PID $gw_pid) — gRPC at localhost:$ISTIO_GATEWAY_PORT"
+        echo ""
+        echo "  Test with:  grpcurl -plaintext localhost:$ISTIO_GATEWAY_PORT list"
+        echo "  Load test:  use host=localhost port=$ISTIO_GATEWAY_PORT in option 5"
+    else
+        warn "Ingress gateway port-forward failed"
+        echo "  Try manually: kubectl port-forward svc/istio-ingressgateway -n istio-system $ISTIO_GATEWAY_PORT:80"
+    fi
+
+    echo ""
+    success "Istio setup complete"
 }
 
 # ---------------------------------------------------------------------------
@@ -841,7 +1124,8 @@ load_test_data() {
                             TRUNCATE contact_pending_actions CASCADE;
                             TRUNCATE contact_alternate_ids CASCADE;
                             TRUNCATE contacts CASCADE;
-                            TRUNCATE standardized_addresses CASCADE;
+                            TRUNCATE address_lines CASCADE;
+                            TRUNCATE addresses CASCADE;
                             TRUNCATE contracts CASCADE;
                             SELECT 'Data cleared' AS status;
 EOSQL
@@ -857,7 +1141,8 @@ EOSQL
                             TRUNCATE TABLE contact_pending_actions;
                             TRUNCATE TABLE contact_alternate_ids;
                             TRUNCATE TABLE contacts;
-                            TRUNCATE TABLE standardized_addresses;
+                            TRUNCATE TABLE address_lines;
+                            TRUNCATE TABLE addresses;
                             TRUNCATE TABLE contracts;
                             SET FOREIGN_KEY_CHECKS = 1;
                             SELECT 'Data cleared' AS status;
@@ -873,7 +1158,8 @@ EOSQL
                             DELETE FROM contact_pending_actions;
                             DELETE FROM contact_alternate_ids;
                             DELETE FROM contacts;
-                            DELETE FROM standardized_addresses;
+                            DELETE FROM address_lines;
+                            DELETE FROM addresses;
                             DELETE FROM contracts;
                             PRINT 'Data cleared';
                         " 2>&1 | tee -a "$LOG_FILE"
@@ -929,7 +1215,7 @@ EOSQL
         success "Test data loaded successfully"
         echo ""
         info "Final row counts:"
-        for table in contracts contacts standardized_addresses contact_addresses contact_emails contact_phones contact_contracts contact_lookup; do
+        for table in contracts contacts addresses address_lines contact_addresses contact_emails contact_phones contact_contracts contact_lookup; do
             local count
             count=$(get_row_count "$table" 2>/dev/null || echo "?")
             printf "  %-30s %s\n" "$table" "${count//[[:space:]]/}"
@@ -966,9 +1252,20 @@ run_load_test() {
         warn "Cannot verify database — proceeding anyway"
     fi
 
-    # Check gRPC service
+    # Check gRPC service — prefer Istio ingress gateway for load-balanced access
     local grpc_host="localhost"
     local grpc_port="9001"
+
+    # Detect Istio ingress gateway — verify actual connectivity, not just a process
+    if (echo >/dev/tcp/localhost/"$ISTIO_GATEWAY_PORT") 2>/dev/null; then
+        grpc_port="$ISTIO_GATEWAY_PORT"
+        info "Istio ingress gateway reachable at localhost:$ISTIO_GATEWAY_PORT (load-balanced)"
+    elif command -v kubectl &>/dev/null && kubectl get svc istio-ingressgateway -n istio-system &>/dev/null 2>&1; then
+        warn "Istio ingress gateway exists but localhost:$ISTIO_GATEWAY_PORT is not reachable"
+        echo "  To enable load-balanced access, run:"
+        echo "    kubectl port-forward svc/istio-ingressgateway -n istio-system $ISTIO_GATEWAY_PORT:80 &"
+        echo "  Falling back to localhost:9001 (single-pod, no load balancing)"
+    fi
 
     read -rp "gRPC host [${grpc_host}]: " input
     grpc_host="${input:-$grpc_host}"
@@ -983,8 +1280,9 @@ run_load_test() {
             error "Cannot reach gRPC service at $grpc_host:$grpc_port"
             echo ""
             echo "Make sure the contact-api service is running and accessible."
-            echo "For Kubernetes: kubectl port-forward service/contact-api 9001:9001"
-            echo "For Docker:    docker compose -f test-data/docker-compose.yml ps"
+            echo "  Istio gateway:  kubectl port-forward svc/istio-ingressgateway -n istio-system $ISTIO_GATEWAY_PORT:80 &"
+            echo "  Direct pod:     kubectl port-forward service/contact-api 9001:9001 -n $K8S_NAMESPACE &"
+            echo "  Docker:         docker compose -f test-data/docker-compose.yml ps"
             return 1
         fi
     else
@@ -1138,7 +1436,7 @@ evaluate_environment() {
             echo -e "  Connection:       ${GREEN}OK${NC} ($DB_TYPE @ $DB_HOST:$DB_PORT/$DB_NAME)"
 
             # Check schema
-            local schema_tables=("contacts" "standardized_addresses" "contact_addresses" "contact_emails"
+            local schema_tables=("contacts" "addresses" "address_lines" "contact_addresses" "contact_emails"
                                  "contact_phones" "contracts" "contact_contracts" "contact_lookup"
                                  "contact_alternate_ids" "contact_pending_actions")
             local tables_found=0
@@ -1268,12 +1566,13 @@ evaluate_environment() {
             echo -e "  minikube:         ${GREEN}running${NC}"
 
             if command -v kubectl &>/dev/null; then
+                echo "  Namespace:        $K8S_NAMESPACE"
                 echo ""
-                echo "  Deployments:"
-                local k8s_services=("contact-api" "contact-consumer-ids" "address" "kafka" "zookeeper")
+                echo "  Deployments (namespace: $K8S_NAMESPACE):"
+                local k8s_services=("contact-api" "async-generate-ffpe-id" "address" "kafka" "zookeeper")
                 for svc in "${k8s_services[@]}"; do
                     local dep_status
-                    dep_status=$(kubectl get deployment "$svc" -o jsonpath='{.status.readyReplicas}/{.status.replicas}' 2>/dev/null) || dep_status=""
+                    dep_status=$(kubectl get deployment "$svc" -n "$K8S_NAMESPACE" -o jsonpath='{.status.readyReplicas}/{.status.replicas}' 2>/dev/null) || dep_status=""
                     if [[ -n "$dep_status" ]]; then
                         local ready
                         ready=$(echo "$dep_status" | cut -d/ -f1)
@@ -1290,10 +1589,10 @@ evaluate_environment() {
                 done
 
                 echo ""
-                echo "  Secrets:"
-                local secrets=("external-fpe-key-secret" "contact-consumer-ids-secret" "address-secret")
+                echo "  Secrets (namespace: $K8S_NAMESPACE):"
+                local secrets=("external-fpe-key-secret" "async-generate-ffpe-id-secret" "address-secret")
                 for secret in "${secrets[@]}"; do
-                    if kubectl get secret "$secret" &>/dev/null; then
+                    if kubectl get secret "$secret" -n "$K8S_NAMESPACE" &>/dev/null; then
                         printf "    %-35s ${GREEN}present${NC}\n" "$secret"
                     else
                         printf "    %-35s ${YELLOW}missing${NC}\n" "$secret"
@@ -1310,6 +1609,57 @@ evaluate_environment() {
                     done
                 else
                     echo -e "    ${YELLOW}none active${NC}"
+                fi
+
+                # Istio status
+                echo ""
+                echo -e "  ${BOLD}Istio${NC}"
+                if command -v istioctl &>/dev/null; then
+                    printf "    %-25s ${GREEN}installed${NC} (%s)\n" "istioctl" "$(istioctl version --short 2>/dev/null | head -1)"
+                else
+                    printf "    %-25s ${YELLOW}not installed${NC}\n" "istioctl"
+                fi
+
+                if kubectl get namespace istio-system &>/dev/null; then
+                    printf "    %-25s ${GREEN}present${NC}\n" "istio-system namespace"
+
+                    # Check ingress gateway
+                    # Check ingress gateway service exists
+                    if kubectl get svc istio-ingressgateway -n istio-system &>/dev/null; then
+                        printf "    %-25s ${GREEN}deployed${NC}\n" "ingress gateway"
+                    else
+                        printf "    %-25s ${YELLOW}not found${NC}\n" "ingress gateway"
+                    fi
+
+                    # Check port-forward to ingress gateway via actual connectivity
+                    if (echo >/dev/tcp/localhost/"$ISTIO_GATEWAY_PORT") 2>/dev/null; then
+                        printf "    %-25s ${GREEN}active${NC} (localhost:$ISTIO_GATEWAY_PORT)\n" "gateway port-forward"
+                    else
+                        printf "    %-25s ${YELLOW}not active${NC}\n" "gateway port-forward"
+                        echo "      Run option 8 or: kubectl port-forward svc/istio-ingressgateway -n istio-system $ISTIO_GATEWAY_PORT:80 &"
+                    fi
+                else
+                    printf "    %-25s ${YELLOW}not installed${NC}\n" "istio-system namespace"
+                fi
+
+                # Check sidecar injection label
+                local injection_label
+                injection_label=$(kubectl get namespace "$K8S_NAMESPACE" -o jsonpath='{.metadata.labels.istio-injection}' 2>/dev/null || true)
+                if [[ "$injection_label" == "enabled" ]]; then
+                    printf "    %-25s ${GREEN}enabled${NC} (namespace: $K8S_NAMESPACE)\n" "sidecar injection"
+                else
+                    printf "    %-25s ${YELLOW}not enabled${NC} (namespace: $K8S_NAMESPACE)\n" "sidecar injection"
+                fi
+
+                # Check pod sidecar status
+                local pods_with_sidecar
+                pods_with_sidecar=$(kubectl get pods -n "$K8S_NAMESPACE" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .spec.containers[*]}{.name}{" "}{end}{"\n"}{end}' 2>/dev/null | grep -c "istio-proxy" || true)
+                local total_pods
+                total_pods=$(kubectl get pods -n "$K8S_NAMESPACE" --no-headers 2>/dev/null | wc -l | tr -d ' ')
+                if [[ "$pods_with_sidecar" -gt 0 ]]; then
+                    printf "    %-25s ${GREEN}%s/%s pods${NC}\n" "sidecar proxies" "$pods_with_sidecar" "$total_pods"
+                elif [[ "$total_pods" -gt 0 ]]; then
+                    printf "    %-25s ${YELLOW}0/%s pods${NC}\n" "sidecar proxies" "$total_pods"
                 fi
             fi
         else
@@ -1454,6 +1804,7 @@ show_menu() {
     echo "  5) Run gRPC Load Test"
     echo "  6) Full Setup (1-4)"
     echo "  7) Create Kubernetes Secrets"
+    echo "  8) Install/Configure Istio"
     echo "  9) Evaluate Environment"
     echo "  0) Exit"
     echo ""
@@ -1476,6 +1827,7 @@ main() {
             5) run_load_test || true ;;
             6) full_setup || true ;;
             7) create_k8s_secrets || true ;;
+            8) install_configure_istio || true ;;
             9) evaluate_environment || true ;;
             0)
                 echo ""

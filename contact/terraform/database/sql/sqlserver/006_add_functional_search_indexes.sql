@@ -1,3 +1,9 @@
+-- Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+--
+-- Licensed under a dual-license model: freely available for non-commercial use;
+-- commercial use requires a separate license. See LICENSE file for details.
+-- Contact license@geastalt.com for commercial licensing.
+
 -- SQL Server equivalent of PostgreSQL 006_add_functional_search_indexes.sql
 -- Create indexes for case-insensitive name search
 -- SQL Server default collation is case-insensitive, so regular indexes suffice

@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+ *
+ * Licensed under a dual-license model: freely available for non-commercial use;
+ * commercial use requires a separate license. See LICENSE file for details.
+ * Contact license@geastalt.com for commercial licensing.
+ */
+
 package com.geastalt.contact.entity;
 
 import jakarta.persistence.Column;
@@ -36,11 +44,11 @@ public class ContactAddress {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "address_id", nullable = false)
-    private StandardizedAddress address;
+    private StreetAddress address;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "address_type", nullable = false)
-    private AddressType addressType;
+    private AddressKind addressType;
 
     @Builder.Default
     @Column(nullable = false)

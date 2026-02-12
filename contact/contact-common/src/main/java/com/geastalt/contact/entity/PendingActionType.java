@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+ *
+ * Licensed under a dual-license model: freely available for non-commercial use;
+ * commercial use requires a separate license. See LICENSE file for details.
+ * Contact license@geastalt.com for commercial licensing.
+ */
+
 package com.geastalt.contact.entity;
 
 /**
@@ -5,7 +13,5 @@ package com.geastalt.contact.entity;
  */
 public enum PendingActionType {
     /** Generate external identifiers for the contact */
-    GENERATE_EXTERNAL_IDENTIFIERS,
-    /** Validate the contact's address */
-    VALIDATE_ADDRESS
+    GENERATE_EXTERNAL_IDENTIFIERS
 }

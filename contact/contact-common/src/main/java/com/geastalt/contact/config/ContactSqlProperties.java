@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+ *
+ * Licensed under a dual-license model: freely available for non-commercial use;
+ * commercial use requires a separate license. See LICENSE file for details.
+ * Contact license@geastalt.com for commercial licensing.
+ */
+
 package com.geastalt.contact.config;
 
 import lombok.Data;
@@ -11,7 +19,6 @@ public class ContactSqlProperties {
 
     private Search search = new Search();
     private Bulk bulk = new Bulk();
-    private Controller controller = new Controller();
 
     @Data
     public static class Search {
@@ -36,14 +43,9 @@ public class ContactSqlProperties {
         private String insertPhone;
         private String insertEmail;
         private String insertAddress;
+        private String insertAddressLine;
         private String insertContactAddress;
         private String insertPendingAction;
         private String insertContactLookup;
-    }
-
-    @Data
-    public static class Controller {
-        private String findContactsWithoutAlternateId;
-        private String insertAlternateId;
     }
 }

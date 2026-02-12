@@ -1,7 +1,15 @@
+/*
+ * Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+ *
+ * Licensed under a dual-license model: freely available for non-commercial use;
+ * commercial use requires a separate license. See LICENSE file for details.
+ * Contact license@geastalt.com for commercial licensing.
+ */
+
 package com.geastalt.contact.service;
 
 import com.geastalt.contact.config.ContactSqlProperties;
-import com.geastalt.contact.entity.AddressType;
+import com.geastalt.contact.entity.AddressKind;
 import com.geastalt.contact.entity.PendingActionType;
 import com.geastalt.contact.grpc.*;
 import lombok.RequiredArgsConstructor;
@@ -34,8 +42,7 @@ public class BulkContactService {
     @Transactional
     public BulkCreateContactsResponse bulkCreateContacts(
             BulkCreateContactsRequest request,
-            String generateIdsTopic,
-            String validateAddressTopic) {
+            String generateIdsTopic) {
 
         List<BulkCreateResult> results = new ArrayList<>();
         int successCount = 0;
@@ -47,9 +54,7 @@ public class BulkContactService {
                 ContactCreationResult creationResult = createContactWithDetails(
                         input,
                         !request.getSkipGenerateExternalIdentifiers(),
-                        !request.getSkipValidateAddress(),
-                        generateIdsTopic,
-                        validateAddressTopic
+                        generateIdsTopic
                 );
 
                 results.add(BulkCreateResult.newBuilder()
@@ -82,9 +87,7 @@ public class BulkContactService {
     private ContactCreationResult createContactWithDetails(
             ContactInput input,
             boolean addGenerateIdsAction,
-            boolean addValidateAddressAction,
-            String generateIdsTopic,
-            String validateAddressTopic) {
+            String generateIdsTopic) {
 
         // Validate required fields
         if (input.getLastName() == null || input.getLastName().isBlank()) {
@@ -137,19 +140,13 @@ public class BulkContactService {
             kafkaTemplate.send(generateIdsTopic, contactId, String.valueOf(contactId));
         }
 
-        if (addValidateAddressAction) {
-            jdbcTemplate.update(sqlProperties.getBulk().getInsertPendingAction(), contactId,
-                    PendingActionType.VALIDATE_ADDRESS.name(), now);
-            kafkaTemplate.send(validateAddressTopic, contactId, String.valueOf(contactId));
-        }
-
         return new ContactCreationResult(contactId, partitionNumber);
     }
 
     private void insertPhones(Long contactId, List<PhoneInput> phones) {
         List<Object[]> batchArgs = new ArrayList<>();
         for (PhoneInput phone : phones) {
-            AddressType phoneType = mapPhoneType(phone.getPhoneType());
+            AddressKind phoneType = mapPhoneType(phone.getPhoneType());
             batchArgs.add(new Object[]{contactId, phone.getPhoneNumber(), phoneType.name()});
         }
         jdbcTemplate.batchUpdate(sqlProperties.getBulk().getInsertPhone(), batchArgs);
@@ -160,7 +157,7 @@ public class BulkContactService {
         List<Object[]> batchArgs = new ArrayList<>();
         boolean firstEmail = true;
         for (EmailInput email : emails) {
-            AddressType emailType = mapEmailType(email.getEmailType());
+            AddressKind emailType = mapEmailType(email.getEmailType());
             batchArgs.add(new Object[]{contactId, email.getEmail(), emailType.name(), firstEmail});
             firstEmail = false;
         }
@@ -171,24 +168,31 @@ public class BulkContactService {
     private void insertAddresses(Long contactId, List<AddressInput> addresses) {
         boolean firstAddress = true;
         for (AddressInput address : addresses) {
-            // Insert standardized address and get generated ID via KeyHolder
+            // Insert address (without lines) and get generated ID
             KeyHolder keyHolder = new GeneratedKeyHolder();
             jdbcTemplate.update(connection -> {
                 PreparedStatement ps = connection.prepareStatement(
                         sqlProperties.getBulk().getInsertAddress(), new String[]{"id"});
-                ps.setString(1, address.getStreetAddress());
-                ps.setString(2, address.getSecondaryAddress().isEmpty() ? null : address.getSecondaryAddress());
-                ps.setString(3, address.getCity());
-                ps.setString(4, address.getState());
-                ps.setString(5, address.getZipCode());
-                ps.setString(6, address.getZipPlus4().isEmpty() ? null : address.getZipPlus4());
+                ps.setString(1, address.getLocality());
+                ps.setString(2, address.getAdministrativeArea());
+                ps.setString(3, address.getPostalCode().isEmpty() ? null : address.getPostalCode());
+                ps.setString(4, address.getCountryCode().isEmpty() ? "US" : address.getCountryCode());
                 return ps;
             }, keyHolder);
 
             Long addressId = keyHolder.getKey().longValue();
 
+            // Insert address lines
+            List<String> lines = address.getAddressLinesList();
+            for (int i = 0; i < lines.size(); i++) {
+                final int lineOrder = i + 1;
+                final String lineValue = lines.get(i);
+                jdbcTemplate.update(sqlProperties.getBulk().getInsertAddressLine(),
+                        addressId, lineOrder, lineValue);
+            }
+
             // Insert contact address link
-            AddressType addressType = mapAddressType(address.getAddressType());
+            AddressKind addressType = mapAddressType(address.getAddressType());
             jdbcTemplate.update(sqlProperties.getBulk().getInsertContactAddress(),
                     contactId, addressId, addressType.name(), firstAddress);
             firstAddress = false;
@@ -196,30 +200,31 @@ public class BulkContactService {
         log.debug("Inserted {} addresses for contact {}", addresses.size(), contactId);
     }
 
-    private AddressType mapPhoneType(PhoneType grpcType) {
+    private AddressKind mapPhoneType(PhoneType grpcType) {
         return switch (grpcType) {
-            case PHONE_HOME -> AddressType.HOME;
-            case PHONE_BUSINESS -> AddressType.BUSINESS;
-            case PHONE_MAILING -> AddressType.MAILING;
-            default -> AddressType.HOME;
+            case PHONE_HOME -> AddressKind.HOME;
+            case PHONE_BUSINESS -> AddressKind.BUSINESS;
+            case PHONE_MAILING -> AddressKind.MAILING;
+            default -> AddressKind.HOME;
         };
     }
 
-    private AddressType mapEmailType(EmailType grpcType) {
+    private AddressKind mapEmailType(EmailType grpcType) {
         return switch (grpcType) {
-            case EMAIL_HOME -> AddressType.HOME;
-            case EMAIL_BUSINESS -> AddressType.BUSINESS;
-            case EMAIL_MAILING -> AddressType.MAILING;
-            default -> AddressType.HOME;
+            case EMAIL_HOME -> AddressKind.HOME;
+            case EMAIL_BUSINESS -> AddressKind.BUSINESS;
+            case EMAIL_MAILING -> AddressKind.MAILING;
+            default -> AddressKind.HOME;
         };
     }
 
-    private AddressType mapAddressType(com.geastalt.contact.grpc.AddressType grpcType) {
+    private AddressKind mapAddressType(com.geastalt.contact.grpc.AddressType grpcType) {
         return switch (grpcType) {
-            case HOME -> AddressType.HOME;
-            case BUSINESS -> AddressType.BUSINESS;
-            case MAILING -> AddressType.MAILING;
-            default -> AddressType.HOME;
+            case HOME -> AddressKind.HOME;
+            case BUSINESS -> AddressKind.BUSINESS;
+            case MAILING -> AddressKind.MAILING;
+            default -> AddressKind.HOME;
         };
     }
+
 }

@@ -1,39 +1,22 @@
+# Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+#
+# Licensed under a dual-license model: freely available for non-commercial use;
+# commercial use requires a separate license. See LICENSE file for details.
+# Contact license@geastalt.com for commercial licensing.
+
 spring:
   main:
     banner-mode: off
   application:
     name: address
-  datasource:
-    url: jdbc:postgresql://${DB_HOST:192.168.1.17}:${DB_PORT:5432}/${DB_NAME:contact}
-    username: ${DB_USERNAME:bob}
-    password: ${DB_PASSWORD:}
-    driver-class-name: org.postgresql.Driver
-    hikari:
-      maximum-pool-size: ${HIKARI_MAX_POOL:10}
-      minimum-idle: ${HIKARI_MIN_IDLE:2}
-      connection-timeout: 10000
-      idle-timeout: 300000
-      max-lifetime: 600000
-  jpa:
-    hibernate:
-      ddl-auto: none
-    show-sql: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-    consumer:
-      group-id: ${KAFKA_CONSUMER_GROUP_ID:address-consumer}
-      auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.LongDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      enable-auto-commit: false
-    listener:
-      ack-mode: manual
 
 server:
   port: 9011
+
+grpc:
+  server:
+    port: 9010
+    reflection-service-enabled: true
 
 management:
   endpoints:
@@ -60,8 +43,7 @@ usps:
     token-path: /oauth2/v3/token
     grant-type: client_credentials
 
-# Address consumer configuration
+# Provider defaults by country code
 address:
-  kafka:
-    topics:
-      validate-address: ${PENDING_ACTION_TOPIC_VALIDATE_ADDRESS:tracking.contact.address}
+  providers:
+    defaults: "{US: usps}"

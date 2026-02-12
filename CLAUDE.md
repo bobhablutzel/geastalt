@@ -30,6 +30,10 @@ Architecture diagrams use Mermaid notation for integration with GitHub
 - Proto generated code: `com.geastalt.<system>.grpc.generated`
 - Maven groupId: `com.geastalt`
 
+### Async Modules (Kafka-based)
+- Prefix: `async-` for all Kafka consumer function apps
+- Convention: `async-<verb>-<noun>` (e.g., `async-generate-ffpe-id`)
+
 ## Contact Service (contact/)
 
 ### Architecture
@@ -49,7 +53,7 @@ mvn clean package -DskipTests
 # Build Docker images for minikube
 eval $(minikube docker-env)
 docker build -t contact-api:latest -f contact-api/Dockerfile .
-docker build -t contact-consumer-ids:latest -f contact-consumer-ids/Dockerfile .
+docker build -t async-generate-ffpe-id:latest -f async-generate-ffpe-id/Dockerfile .
 # Restart deployment
 kubectl rollout restart deployment/contact-api && kubectl rollout status deployment/contact-api --timeout=120s
 
@@ -109,15 +113,14 @@ grpcurl -plaintext -d '{"last_name": "smith", "max_results": 25}' localhost:9001
 - Fixed N+1 query problem in search endpoints using batch fetching
 - Added GetContactById gRPC endpoint
 
-## Address Validation Consumer (address/)
+## Address Validation Service (address/)
 
 ### Architecture
-- Spring Boot Kafka consumer for address validation
-- Consumes from `tracking.contact.address` Kafka topic (published by contact service)
-- Validates/standardizes addresses using USPS API
-- Shared database with contact service (PostgreSQL at 192.168.1.17:5432)
-- Independent build and deployment (no dependency on contact-common)
-- HTTP management port: 9011
+- Stateless gRPC validation facade (no database, no Kafka)
+- Accepts addresses, routes to validation providers (USPS, future providers), returns results
+- Format verification for US, CA, GB addresses
+- International address model: locality, administrative_area, postal_code, country_code (ISO 3166-1 alpha-2)
+- gRPC port: 9010, HTTP management port: 9011
 
 ### Building and Deploying
 ```bash
@@ -133,23 +136,39 @@ docker build -t address:latest .
 helm upgrade --install address helm/address -n address --create-namespace
 ```
 
+### Testing gRPC Endpoints
+```bash
+# List available services
+grpcurl -plaintext localhost:9010 list
+
+# Validate an address
+grpcurl -plaintext -d '{"address":{"country_code":"US","address_lines":["123 Main St"],"locality":"Springfield","administrative_area":"IL","postal_code":"62704"}}' \
+  localhost:9010 com.geastalt.address.grpc.AddressService/ValidateAddress
+
+# Verify address format
+grpcurl -plaintext -d '{"address":{"country_code":"US","address_lines":["123 Main St"],"locality":"Springfield","administrative_area":"IL","postal_code":"62704"}}' \
+  localhost:9010 com.geastalt.address.grpc.AddressService/VerifyAddressFormat
+
+# List available providers
+grpcurl -plaintext -d '{}' localhost:9010 com.geastalt.address.grpc.AddressService/GetProviders
+```
+
 ### Key Files
-- Application entry: `address/src/main/java/com/geastalt/address/AddressApplication.java`
-- Kafka consumer: `address/src/main/java/com/geastalt/address/consumer/ValidateAddressConsumer.java`
-- Validation service: `address/src/main/java/com/geastalt/address/service/ValidateAddressService.java`
-- USPS integration: `address/src/main/java/com/geastalt/address/service/AddressStandardizationService.java`
+- Proto definition: `address/src/main/proto/address_service.proto`
+- gRPC service: `address/src/main/java/com/geastalt/address/grpc/AddressGrpcService.java`
+- Provider registry: `address/src/main/java/com/geastalt/address/provider/ProviderRegistry.java`
+- USPS provider: `address/src/main/java/com/geastalt/address/provider/usps/UspsValidationProvider.java`
+- Format verifiers: `address/src/main/java/com/geastalt/address/format/`
 - Application config: `address/src/main/resources/application.yml`
 - Helm chart: `address/helm/address/`
 
-### Database Tables Used
-- `contacts` (read-only)
-- `contact_addresses` (read/write)
-- `standardized_addresses` (read/write)
-- `contact_pending_actions` (read/delete)
+### gRPC Endpoints
+- ValidateAddress - validate/standardize an address using a provider (USPS for US)
+- VerifyAddressFormat - verify address format (ZIP, state codes, postal codes) for US/CA/GB
+- GetProviders - list available validation providers and their supported countries
 
 ### Password and credentials
 - Kubernetes secret: `address-secret`
-  - Database password: `DB_PASSWORD`
   - USPS credentials: `USPS_CLIENT_ID`, `USPS_CLIENT_SECRET`
 
 ## Lock Manager (lock/)

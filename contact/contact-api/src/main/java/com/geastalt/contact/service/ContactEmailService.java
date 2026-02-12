@@ -1,6 +1,14 @@
+/*
+ * Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+ *
+ * Licensed under a dual-license model: freely available for non-commercial use;
+ * commercial use requires a separate license. See LICENSE file for details.
+ * Contact license@geastalt.com for commercial licensing.
+ */
+
 package com.geastalt.contact.service;
 
-import com.geastalt.contact.entity.AddressType;
+import com.geastalt.contact.entity.AddressKind;
 import com.geastalt.contact.entity.Contact;
 import com.geastalt.contact.entity.ContactEmail;
 import com.geastalt.contact.repository.ContactEmailRepository;
@@ -21,7 +29,7 @@ public class ContactEmailService {
     private final ContactEmailRepository contactEmailRepository;
 
     @Transactional
-    public ContactEmail addEmailToContact(Long contactId, String email, AddressType emailType) {
+    public ContactEmail addEmailToContact(Long contactId, String email, AddressKind emailType) {
         log.info("Adding email {} of type {} to contact {}", email, emailType, contactId);
 
         Contact contact = contactRepository.findById(contactId)
@@ -50,7 +58,7 @@ public class ContactEmailService {
     }
 
     @Transactional
-    public ContactEmail updateContactEmail(Long contactId, String email, AddressType emailType) {
+    public ContactEmail updateContactEmail(Long contactId, String email, AddressKind emailType) {
         log.info("Updating email type {} for contact {} to {}", emailType, contactId, email);
 
         Contact contact = contactRepository.findById(contactId)
@@ -76,7 +84,7 @@ public class ContactEmailService {
     }
 
     @Transactional
-    public void removeContactEmail(Long contactId, AddressType emailType) {
+    public void removeContactEmail(Long contactId, AddressKind emailType) {
         log.info("Removing email type {} from contact {}", emailType, contactId);
 
         contactEmailRepository.findByContactIdAndEmailType(contactId, emailType)

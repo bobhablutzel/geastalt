@@ -1,106 +1,139 @@
-# Address Validation Consumer
+# Address Validation Service
 
-Kafka consumer service that processes `VALIDATE_ADDRESS` pending actions using the USPS API.
+Stateless gRPC facade for address validation and format verification. Routes addresses to the appropriate validation provider (USPS for US, extensible for other countries) and returns standardized results.
 
 ## Overview
 
-This service listens to the `tracking.contact.address` Kafka topic and validates/standardizes addresses for contacts using the USPS Address Validation API. It operates as an independent module that shares the contact database.
+This service accepts postal addresses via gRPC, validates them against external providers, and verifies address formatting for supported countries. It has no database and no Kafka dependencies — it is a pure validation facade.
 
-## Port
+## Ports
 
 | Protocol | Port | Description |
 |----------|------|-------------|
-| HTTP | 9011 | Health endpoints |
+| gRPC | 9010 | Address validation API |
+| HTTP | 9011 | Health/management endpoints |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    subgraph Kafka
-        topic["tracking.contact.address"]
-    end
+    subgraph address["Address Service"]
+        grpc["AddressGrpcService"]
+        validation["AddressValidationService"]
+        format["AddressFormatService"]
+        registry["ProviderRegistry"]
+        formatRegistry["CountryFormatRegistry"]
+        usps["UspsValidationProvider"]
+        usFmt["UsFormatVerifier"]
+        caFmt["CaFormatVerifier"]
+        gbFmt["GbFormatVerifier"]
 
-    subgraph address["address"]
-        listener["ValidateAddressConsumer"]
-        service["ValidateAddressService"]
-        usps["AddressStandardizationService"]
-        listener --> service
-        service --> usps
+        grpc --> validation
+        grpc --> format
+        validation --> registry
+        format --> formatRegistry
+        registry --> usps
+        formatRegistry --> usFmt
+        formatRegistry --> caFmt
+        formatRegistry --> gbFmt
     end
 
     subgraph External
         uspsApi["USPS API"]
     end
 
-    subgraph Database["PostgreSQL"]
-        contacts[(contacts)]
-        addresses[(contact_addresses)]
-        stdAddresses[(standardized_addresses)]
-        pendingActions[(contact_pending_actions)]
-    end
-
-    topic -->|"consume contactId"| listener
-    service -->|"read contact"| contacts
-    service -->|"read addresses"| addresses
-    usps -->|"validate"| uspsApi
-    usps -->|"save standardized"| stdAddresses
-    service -->|"delete pending action"| pendingActions
+    client["gRPC Client"] -->|"ValidateAddress\nVerifyAddressFormat\nGetProviders"| grpc
+    usps -->|"OAuth + validate"| uspsApi
 ```
 
-## Processing Flow
+## gRPC API
 
-```mermaid
-sequenceDiagram
-    participant Kafka
-    participant Consumer as ValidateAddressConsumer
-    participant Service as ValidateAddressService
-    participant USPS as USPS API
-    participant DB as PostgreSQL
+### ValidateAddress
 
-    Kafka->>Consumer: Receive contactId
-    Consumer->>Service: processValidateAddress(contactId)
+Validates an address using the appropriate provider for the country.
 
-    Service->>DB: Find pending action
-    alt Pending action not found
-        Service-->>Consumer: Skip (already processed)
-    else Pending action exists
-        Service->>DB: Find contact
-        Service->>DB: Get contact addresses
-        loop Each address
-            Service->>USPS: Validate address
-            USPS-->>Service: Standardized address
-            Service->>DB: Save/update standardized address
-        end
-        Service->>DB: Delete pending action
-        Service-->>Consumer: Success
-    end
+```protobuf
+rpc ValidateAddress(ValidateAddressRequest) returns (ValidateAddressResponse);
 ```
 
-## Processing Logic
+Response statuses: `VALIDATED`, `VALIDATED_WITH_CORRECTIONS`, `INVALID`, `PROVIDER_UNAVAILABLE`, `PROVIDER_ERROR`
 
-1. **Receive message** from `tracking.contact.address` topic
-2. **Check pending action** exists for the contact
-3. **Verify contact** exists in database
-4. **Retrieve all addresses** for the contact
-5. **For each address**:
-   - Build USPS request from current address data
-   - Call USPS API to get standardized address
-   - Save standardized address (or reuse existing if identical)
-   - Update contact address to point to the USPS-standardized address
-6. **Remove pending action** from `contact_pending_actions` table
+### VerifyAddressFormat
+
+Verifies address format (postal code, state/province codes, required fields) without calling an external provider.
+
+```protobuf
+rpc VerifyAddressFormat(VerifyAddressFormatRequest) returns (VerifyAddressFormatResponse);
+```
+
+Supported countries: US, CA, GB
+
+### GetProviders
+
+Lists available validation providers and their supported countries.
+
+```protobuf
+rpc GetProviders(GetProvidersRequest) returns (GetProvidersResponse);
+```
+
+## Address Model
+
+Uses an international postal address model:
+
+| Field | Description |
+|-------|-------------|
+| `country_code` | ISO 3166-1 alpha-2 (e.g., "US", "CA", "GB") |
+| `address_lines` | Repeated street address lines |
+| `locality` | City/town |
+| `administrative_area` | State/province/region |
+| `postal_code` | ZIP/postal code |
+| `sub_locality` | District/suburb (optional) |
+| `sorting_code` | Sorting code (optional) |
+| `organization` | Organization name (optional) |
+| `recipient` | Recipient name (optional) |
+
+## Provider Architecture
+
+Validation providers implement a common interface and are auto-discovered by Spring:
+
+```
+provider/
+├── ValidationProvider.java          # Interface
+├── ValidationRequest.java           # Internal model
+├── ValidationResult.java            # Internal model
+├── ProviderRegistry.java            # Routes by country code
+└── usps/
+    ├── UspsValidationProvider.java   # USPS API integration
+    ├── UspsOAuthService.java         # OAuth2 token management
+    ├── UspsConfig.java               # USPS configuration
+    └── Usps*Request/Response.java    # USPS DTOs
+```
+
+Country-to-provider defaults are configured in `application.yml`:
+
+```yaml
+address:
+  providers:
+    defaults: "{US: usps}"
+```
+
+## Format Verification
+
+Format verifiers validate address formatting without calling external APIs:
+
+| Country | Postal Code | Admin Area | Notes |
+|---------|-------------|------------|-------|
+| US | `12345` or `12345-6789` | 50 states + DC + territories | All fields required |
+| CA | `K1A 0B1` | 13 provinces/territories | All fields required |
+| GB | Various UK patterns | Not required | Postcode + locality required |
 
 ## Configuration
 
 ```yaml
-spring:
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-    consumer:
-      group-id: ${KAFKA_CONSUMER_GROUP_ID:address-consumer}
-      auto-offset-reset: earliest
-      enable-auto-commit: false
-    listener:
-      ack-mode: manual
+grpc:
+  server:
+    port: 9010
+    reflection-service-enabled: true
 
 usps:
   base-url: ${USPS_BASE_URL:https://apis-tem.usps.com}
@@ -108,26 +141,17 @@ usps:
   client-secret: ${USPS_CLIENT_SECRET}
 
 address:
-  kafka:
-    topics:
-      validate-address: ${PENDING_ACTION_TOPIC_VALIDATE_ADDRESS:tracking.contact.address}
+  providers:
+    defaults: "{US: usps}"
 ```
 
 ## Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `KAFKA_BOOTSTRAP_SERVERS` | Kafka broker addresses | `localhost:9092` |
-| `KAFKA_CONSUMER_GROUP_ID` | Consumer group ID | `address-consumer` |
-| `PENDING_ACTION_TOPIC_VALIDATE_ADDRESS` | Topic to consume | `tracking.contact.address` |
 | `USPS_BASE_URL` | USPS API base URL | `https://apis-tem.usps.com` |
 | `USPS_CLIENT_ID` | USPS OAuth client ID | Required |
 | `USPS_CLIENT_SECRET` | USPS OAuth client secret | Required |
-| `DB_HOST` | Database host | `192.168.1.17` |
-| `DB_PORT` | Database port | `5432` |
-| `DB_NAME` | Database name | `contact` |
-| `DB_USERNAME` | Database username | `bob` |
-| `DB_PASSWORD` | Database password | Required |
 
 ## Building
 
@@ -140,22 +164,36 @@ mvn clean package -DskipTests
 docker build -t address:latest .
 ```
 
-## Running
+## Testing
 
 ```bash
-# With Maven
-mvn spring-boot:run
+# List services
+grpcurl -plaintext localhost:9010 list
 
-# With Java
-java -jar target/address-0.0.1-SNAPSHOT.jar
+# Validate a US address
+grpcurl -plaintext -d '{
+  "address": {
+    "country_code": "US",
+    "address_lines": ["123 Main St"],
+    "locality": "Springfield",
+    "administrative_area": "IL",
+    "postal_code": "62704"
+  }
+}' localhost:9010 com.geastalt.address.grpc.AddressService/ValidateAddress
 
-# With Docker
-docker run -p 9011:9011 \
-  -e KAFKA_BOOTSTRAP_SERVERS=kafka:9092 \
-  -e USPS_CLIENT_ID=your-client-id \
-  -e USPS_CLIENT_SECRET=your-client-secret \
-  -e DB_PASSWORD=your-password \
-  address:latest
+# Verify address format
+grpcurl -plaintext -d '{
+  "address": {
+    "country_code": "US",
+    "address_lines": ["123 Main St"],
+    "locality": "Springfield",
+    "administrative_area": "IL",
+    "postal_code": "62704"
+  }
+}' localhost:9010 com.geastalt.address.grpc.AddressService/VerifyAddressFormat
+
+# List providers
+grpcurl -plaintext -d '{}' localhost:9010 com.geastalt.address.grpc.AddressService/GetProviders
 ```
 
 ## Health Endpoints
@@ -165,30 +203,3 @@ docker run -p 9011:9011 \
 | `/actuator/health` | Overall health status |
 | `/actuator/health/liveness` | Kubernetes liveness probe |
 | `/actuator/health/readiness` | Kubernetes readiness probe |
-
-## Integration Point
-
-Contact service publishes to Kafka topic `tracking.contact.address`; this module consumes from that same topic. No direct service-to-service API calls.
-
-## Shared Database
-
-This module connects to the same PostgreSQL database as the contact service. Tables used:
-- `contacts` (read-only)
-- `contact_addresses` (read/write)
-- `standardized_addresses` (read/write)
-- `contact_pending_actions` (read/delete)
-
-## Scaling
-
-- Default: 2 replicas in Kubernetes
-- Kafka partitions determine max parallelism
-- Each replica joins the same consumer group for load balancing
-- Consider USPS API rate limits when scaling
-
-## USPS Integration
-
-The service uses the USPS Web Tools API for address standardization:
-
-- **OAuth Authentication**: Tokens are cached and refreshed automatically
-- **Address Validation**: Corrects and standardizes addresses
-- **Deduplication**: Existing standardized addresses are reused

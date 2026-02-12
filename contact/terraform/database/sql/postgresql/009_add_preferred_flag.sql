@@ -1,3 +1,9 @@
+-- Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+--
+-- Licensed under a dual-license model: freely available for non-commercial use;
+-- commercial use requires a separate license. See LICENSE file for details.
+-- Contact license@geastalt.com for commercial licensing.
+
 -- Add preferred flag to contact_addresses and contact_emails tables
 
 ALTER TABLE public.contact_addresses ADD COLUMN IF NOT EXISTS preferred BOOLEAN NOT NULL DEFAULT FALSE;

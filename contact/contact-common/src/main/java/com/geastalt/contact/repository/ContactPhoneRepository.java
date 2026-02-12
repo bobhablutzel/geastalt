@@ -1,6 +1,14 @@
+/*
+ * Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+ *
+ * Licensed under a dual-license model: freely available for non-commercial use;
+ * commercial use requires a separate license. See LICENSE file for details.
+ * Contact license@geastalt.com for commercial licensing.
+ */
+
 package com.geastalt.contact.repository;
 
-import com.geastalt.contact.entity.AddressType;
+import com.geastalt.contact.entity.AddressKind;
 import com.geastalt.contact.entity.ContactPhone;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
@@ -13,5 +21,5 @@ public interface ContactPhoneRepository extends JpaRepository<ContactPhone, Long
 
     List<ContactPhone> findByContactId(Long contactId);
 
-    Optional<ContactPhone> findByContactIdAndPhoneType(Long contactId, AddressType phoneType);
+    Optional<ContactPhone> findByContactIdAndPhoneType(Long contactId, AddressKind phoneType);
 }

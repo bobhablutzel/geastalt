@@ -1,3 +1,9 @@
+# Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+#
+# Licensed under a dual-license model: freely available for non-commercial use;
+# commercial use requires a separate license. See LICENSE file for details.
+# Contact license@geastalt.com for commercial licensing.
+
 apiVersion: networking.istio.io/v1beta1
 kind: DestinationRule
 metadata:
@@ -8,6 +14,8 @@ metadata:
 spec:
   host: {{ .Values.service.name }}.{{ .Values.service.namespace }}.svc.cluster.local
   trafficPolicy:
+    loadBalancer:
+      simple: {{ .Values.destinationRule.loadBalancer.simple }}
     connectionPool:
       http:
         h2UpgradePolicy: {{ .Values.destinationRule.connectionPool.http.h2UpgradePolicy }}

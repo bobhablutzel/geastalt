@@ -1,3 +1,9 @@
+# Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+#
+# Licensed under a dual-license model: freely available for non-commercial use;
+# commercial use requires a separate license. See LICENSE file for details.
+# Contact license@geastalt.com for commercial licensing.
+
 spring:
   main:
     banner-mode: off
@@ -79,7 +85,6 @@ contact:
   pending-actions:
     topics:
       generate-external-identifiers: ${PENDING_ACTION_TOPIC_GENERATE_IDS:tracking.contact.ids}
-      validate-address: ${PENDING_ACTION_TOPIC_VALIDATE_ADDRESS:tracking.contact.address}
 
 # OpenTelemetry configuration
 otel:

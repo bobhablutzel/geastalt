@@ -1,3 +1,9 @@
+# Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+#
+# Licensed under a dual-license model: freely available for non-commercial use;
+# commercial use requires a separate license. See LICENSE file for details.
+# Contact license@geastalt.com for commercial licensing.
+
 # Full-stack Docker Compose for test environment
 # Starts Kafka infrastructure + all application services
 #
@@ -75,11 +81,11 @@ services:
       retries: 10
       start_period: 45s
 
-  contact-consumer-ids:
+  async-generate-ffpe-id:
     build:
       context: ../contact
-      dockerfile: contact-consumer-ids/Dockerfile
-    container_name: test-contact-consumer-ids
+      dockerfile: async-generate-ffpe-id/Dockerfile
+    container_name: test-async-generate-ffpe-id
     depends_on:
       kafka:
         condition: service_healthy

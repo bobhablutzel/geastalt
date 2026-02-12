@@ -1,0 +1,158 @@
+/*
+ * Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+ *
+ * Licensed under a dual-license model: freely available for non-commercial use;
+ * commercial use requires a separate license. See LICENSE file for details.
+ * Contact license@geastalt.com for commercial licensing.
+ */
+
+syntax = "proto3";
+
+package com.geastalt.address.grpc;
+
+option java_multiple_files = true;
+option java_package = "com.geastalt.address.grpc.generated";
+option java_outer_classname = "AddressServiceProto";
+
+// Address validation and format verification service
+service AddressService {
+  // Validate an address against a provider (e.g. USPS)
+  rpc ValidateAddress(ValidateAddressRequest) returns (ValidateAddressResponse);
+
+  // Verify address format without calling an external provider
+  rpc VerifyAddressFormat(VerifyAddressFormatRequest) returns (VerifyAddressFormatResponse);
+
+  // List available validation providers
+  rpc GetProviders(GetProvidersRequest) returns (GetProvidersResponse);
+}
+
+// International postal address model
+message PostalAddress {
+  // ISO 3166-1 alpha-2 country code (e.g. "US", "CA", "GB")
+  string country_code = 1;
+
+  // Address lines (street address, secondary address, etc.)
+  repeated string address_lines = 2;
+
+  // City / town / village
+  string locality = 3;
+
+  // State / province / region
+  string administrative_area = 4;
+
+  // ZIP / postal code
+  string postal_code = 5;
+
+  // Sub-locality (neighborhood, borough, district)
+  optional string sub_locality = 6;
+
+  // Sorting code (CEDEX in France, etc.)
+  optional string sorting_code = 7;
+
+  // Organization / company name
+  optional string organization = 8;
+
+  // Recipient name
+  optional string recipient = 9;
+}
+
+// --- ValidateAddress ---
+
+message ValidateAddressRequest {
+  // Address to validate
+  PostalAddress address = 1;
+
+  // Optional provider override (e.g. "usps", "smarty")
+  optional string provider_id = 2;
+}
+
+message ValidateAddressResponse {
+  // Validation outcome
+  ValidationStatus status = 1;
+
+  // Standardized/corrected address (if validation succeeded)
+  PostalAddress standardized_address = 2;
+
+  // Provider that performed the validation
+  string provider_id = 3;
+
+  // Provider-specific metadata
+  map<string, string> metadata = 4;
+
+  // Human-readable message (e.g. error details)
+  string message = 5;
+}
+
+enum ValidationStatus {
+  VALIDATION_STATUS_UNSPECIFIED = 0;
+  VALIDATED = 1;
+  VALIDATED_WITH_CORRECTIONS = 2;
+  INVALID = 3;
+  PROVIDER_UNAVAILABLE = 4;
+  PROVIDER_ERROR = 5;
+}
+
+// --- VerifyAddressFormat ---
+
+message VerifyAddressFormatRequest {
+  // Address to verify format of
+  PostalAddress address = 1;
+}
+
+message VerifyAddressFormatResponse {
+  // Format verification outcome
+  FormatStatus status = 1;
+
+  // Corrected/normalized address
+  PostalAddress corrected_address = 2;
+
+  // Individual format issues found
+  repeated FormatIssue issues = 3;
+}
+
+enum FormatStatus {
+  FORMAT_STATUS_UNSPECIFIED = 0;
+  FORMAT_VALID = 1;
+  FORMAT_CORRECTED = 2;
+  FORMAT_INVALID = 3;
+  FORMAT_UNSUPPORTED_COUNTRY = 4;
+}
+
+message FormatIssue {
+  // Which field has the issue
+  string field = 1;
+
+  // Severity of the issue
+  FormatIssueSeverity severity = 2;
+
+  // Human-readable description
+  string message = 3;
+
+  // Original value
+  string original_value = 4;
+
+  // Corrected value (empty if severity is ERROR)
+  string corrected_value = 5;
+}
+
+enum FormatIssueSeverity {
+  FORMAT_ISSUE_SEVERITY_UNSPECIFIED = 0;
+  ERROR = 1;
+  WARNING = 2;
+  INFO = 3;
+}
+
+// --- GetProviders ---
+
+message GetProvidersRequest {}
+
+message GetProvidersResponse {
+  repeated ProviderInfo providers = 1;
+}
+
+message ProviderInfo {
+  string provider_id = 1;
+  string display_name = 2;
+  repeated string supported_countries = 3;
+  bool enabled = 4;
+}

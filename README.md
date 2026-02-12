@@ -28,7 +28,7 @@ geastalt/
 ├── contact/           # Contact management system
 │   ├── contact-api/
 │   ├── contact-common/
-│   ├── contact-consumer-ids/
+│   ├── async-generate-ffpe-id/
 │   ├── contact-consumer-address/
 │   ├── helm/
 │   ├── k8s/

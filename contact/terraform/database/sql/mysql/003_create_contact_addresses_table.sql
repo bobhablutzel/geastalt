@@ -1,3 +1,9 @@
+-- Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+--
+-- Licensed under a dual-license model: freely available for non-commercial use;
+-- commercial use requires a separate license. See LICENSE file for details.
+-- Contact license@geastalt.com for commercial licensing.
+
 -- Create contact_addresses table (MySQL equivalent of PostgreSQL migration 003)
 -- This script is idempotent and can be run multiple times safely
 
@@ -13,7 +19,7 @@ BEGIN
         address_type VARCHAR(50) NOT NULL,
         CONSTRAINT uk_contact_address_type UNIQUE (contact_id, address_type),
         CONSTRAINT fk_contact_addresses_contact FOREIGN KEY (contact_id) REFERENCES contacts(id),
-        CONSTRAINT fk_contact_addresses_address FOREIGN KEY (address_id) REFERENCES standardized_addresses(id)
+        CONSTRAINT fk_contact_addresses_address FOREIGN KEY (address_id) REFERENCES addresses(id)
     ) COMMENT = 'Links contacts to their standardized addresses with address type';
 
     -- Create indexes for faster lookups

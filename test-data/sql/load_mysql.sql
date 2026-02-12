@@ -1,3 +1,9 @@
+-- Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+--
+-- Licensed under a dual-license model: freely available for non-commercial use;
+-- commercial use requires a separate license. See LICENSE file for details.
+-- Contact license@geastalt.com for commercial licensing.
+
 -- ============================================================================
 -- MySQL Bulk Data Loader for Test Environment
 -- ============================================================================
@@ -102,35 +108,46 @@ SELECT '=== Step 4: Loading standardized addresses ===' AS status;
 
 -- Add temp column if not present
 SET @col_exists = (SELECT COUNT(*) FROM information_schema.columns
-    WHERE table_schema = DATABASE() AND table_name = 'standardized_addresses' AND column_name = '_csv_id');
+    WHERE table_schema = DATABASE() AND table_name = 'addresses' AND column_name = '_csv_id');
 SET @sql = IF(@col_exists = 0,
-    'ALTER TABLE standardized_addresses ADD COLUMN _csv_id VARCHAR(36)',
+    'ALTER TABLE addresses ADD COLUMN _csv_id VARCHAR(36)',
     'SELECT 1');
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
-INSERT INTO standardized_addresses (street_address, city, state, zip_code, _csv_id)
+INSERT INTO addresses (locality, administrative_area, postal_code, country_code, _csv_id)
 SELECT
-    CONCAT(sa.street_number, ' ', sa.street_name, ' ', sa.street_type),
     sa.city,
     sa.state,
     sa.zip_code,
+    'US',
     sa.address_id
 FROM staging_addresses sa
 ON DUPLICATE KEY UPDATE _csv_id = VALUES(_csv_id);
 
 -- Create index on _csv_id for join performance
 SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics
-    WHERE table_schema = DATABASE() AND table_name = 'standardized_addresses' AND index_name = 'idx_std_addr_csv_id');
+    WHERE table_schema = DATABASE() AND table_name = 'addresses' AND index_name = 'idx_std_addr_csv_id');
 SET @sql = IF(@idx_exists = 0,
-    'CREATE INDEX idx_std_addr_csv_id ON standardized_addresses(_csv_id)',
+    'CREATE INDEX idx_std_addr_csv_id ON addresses(_csv_id)',
     'SELECT 1');
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
-SELECT CONCAT('Standardized addresses loaded: ', COUNT(*)) AS status FROM standardized_addresses WHERE _csv_id IS NOT NULL;
+SELECT CONCAT('Standardized addresses loaded: ', COUNT(*)) AS status FROM addresses WHERE _csv_id IS NOT NULL;
+
+-- Insert address lines (street address as line 1)
+INSERT INTO address_lines (address_id, line_order, line_value)
+SELECT
+    a.id,
+    1,
+    CONCAT(sa.street_number, ' ', sa.street_name, ' ', sa.street_type)
+FROM staging_addresses sa
+JOIN addresses a ON a._csv_id = sa.address_id;
+
+SELECT CONCAT('Address lines loaded: ', COUNT(*)) AS status FROM address_lines;
 
 -- ============================================================================
 -- STEP 5: Load contacts with temp CSV ID column
@@ -182,7 +199,7 @@ SELECT
     1
 FROM staging_contacts sc
 JOIN contacts c ON c._csv_id = sc.contact_id
-JOIN standardized_addresses a ON a._csv_id = sc.address_id;
+JOIN addresses a ON a._csv_id = sc.address_id;
 
 SELECT CONCAT('Contact addresses linked: ', COUNT(*)) AS status FROM contact_addresses;
 
@@ -265,9 +282,9 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
 SET @idx_exists = (SELECT COUNT(*) FROM information_schema.statistics
-    WHERE table_schema = DATABASE() AND table_name = 'standardized_addresses' AND index_name = 'idx_std_addr_csv_id');
+    WHERE table_schema = DATABASE() AND table_name = 'addresses' AND index_name = 'idx_std_addr_csv_id');
 SET @sql = IF(@idx_exists > 0,
-    'DROP INDEX idx_std_addr_csv_id ON standardized_addresses',
+    'DROP INDEX idx_std_addr_csv_id ON addresses',
     'SELECT 1');
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
@@ -284,9 +301,9 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
 SET @col_exists = (SELECT COUNT(*) FROM information_schema.columns
-    WHERE table_schema = DATABASE() AND table_name = 'standardized_addresses' AND column_name = '_csv_id');
+    WHERE table_schema = DATABASE() AND table_name = 'addresses' AND column_name = '_csv_id');
 SET @sql = IF(@col_exists > 0,
-    'ALTER TABLE standardized_addresses DROP COLUMN _csv_id',
+    'ALTER TABLE addresses DROP COLUMN _csv_id',
     'SELECT 1');
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
@@ -303,10 +320,11 @@ DROP TABLE IF EXISTS staging_contracts;
 SELECT '=== IMPORT COMPLETE ===' AS status;
 SELECT CONCAT('Total contracts:          ', COUNT(*)) AS status FROM contracts;
 SELECT CONCAT('Total contacts:           ', COUNT(*)) AS status FROM contacts;
-SELECT CONCAT('Total addresses:          ', COUNT(*)) AS status FROM standardized_addresses;
+SELECT CONCAT('Total addresses:          ', COUNT(*)) AS status FROM addresses;
 SELECT CONCAT('Total contact_addresses:  ', COUNT(*)) AS status FROM contact_addresses;
 SELECT CONCAT('Total contact_emails:     ', COUNT(*)) AS status FROM contact_emails;
 SELECT CONCAT('Total contact_phones:     ', COUNT(*)) AS status FROM contact_phones;
 SELECT CONCAT('Total contact_contracts:  ', COUNT(*)) AS status FROM contact_contracts;
+SELECT CONCAT('Total address_lines:      ', COUNT(*)) AS status FROM address_lines;
 SELECT CONCAT('Total contact_lookup:     ', COUNT(*)) AS status FROM contact_lookup;
 SELECT CONCAT('Elapsed time: ', TIMEDIFF(NOW(), @start_time)) AS status;

@@ -1,0 +1,44 @@
+# Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+#
+# Licensed under a dual-license model: freely available for non-commercial use;
+# commercial use requires a separate license. See LICENSE file for details.
+# Contact license@geastalt.com for commercial licensing.
+
+replicaCount: 2
+
+image:
+  repository: async-generate-ffpe-id
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 9010
+
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "250m"
+  limits:
+    memory: "1Gi"
+    cpu: "500m"
+
+javaOpts: "-Xms256m -Xmx512m -XX:+UseG1GC"
+
+database:
+  host: "192.168.1.17"
+  port: "5432"
+  name: "contact"
+  username: "bob"
+
+kafka:
+  bootstrapServers: "kafka:9092"
+  consumerGroupId: "async-generate-ffpe-id"
+  topics:
+    generateExternalIdentifiers: "tracking.contact.ids"
+
+# External secret name (create with kubectl before deploying)
+# kubectl create secret generic async-generate-ffpe-id-secret \
+#   --from-literal=DB_PASSWORD=xxx \
+#   --from-literal=CONTACT_EXTERNAL_ID_KEY=xxx
+secretName: "async-generate-ffpe-id-secret"

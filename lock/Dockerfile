@@ -1,3 +1,9 @@
+# Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+#
+# Licensed under a dual-license model: freely available for non-commercial use;
+# commercial use requires a separate license. See LICENSE file for details.
+# Contact license@geastalt.com for commercial licensing.
+
 # Build stage - use Debian-based image (glibc) for protoc compatibility
 FROM eclipse-temurin:21.0.9_10-jdk AS builder
 

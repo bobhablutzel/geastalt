@@ -13,7 +13,6 @@ com.geastalt.contact/
 ├── entity/              # JPA entities
 ├── repository/          # Spring Data JPA repositories
 ├── dto/                 # Data Transfer Objects
-│   └── usps/            # USPS API DTOs
 ├── service/             # Shared services
 ├── config/              # Shared configuration
 └── crypto/              # Encryption utilities
@@ -30,7 +29,8 @@ erDiagram
     Contact ||--o{ ContactPhone : has
     Contact ||--o{ ContactContract : has
     ContactContract }o--|| Contract : references
-    ContactAddress }o--|| StandardizedAddress : references
+    ContactAddress }o--|| StreetAddress : references
+    StreetAddress ||--o{ AddressLine : has
 
     Contact {
         Long id PK
@@ -57,7 +57,7 @@ erDiagram
         Long id PK
         Long contactId FK
         Long addressId FK
-        AddressType addressType
+        AddressKind addressType
     }
 
     Contract {
@@ -75,14 +75,22 @@ erDiagram
         OffsetDateTime expirationDate
     }
 
-    StandardizedAddress {
+    StreetAddress {
         Long id PK
-        String streetAddress
-        String secondaryAddress
-        String city
-        String state
-        String zipCode
-        String zipPlus4
+        String locality
+        String administrativeArea
+        String postalCode
+        String countryCode
+        String subLocality
+        String sortingCode
+        Boolean validated
+    }
+
+    AddressLine {
+        Long id PK
+        Long addressId FK
+        Integer lineOrder
+        String lineValue
     }
 ```
 
@@ -104,9 +112,8 @@ Custom types can be added without code changes (e.g., `SSN_HASH`, `PARTNER_ID`).
 | Value | Description |
 |-------|-------------|
 | `GENERATE_EXTERNAL_IDENTIFIERS` | Generate external identifiers for the contact |
-| `VALIDATE_ADDRESS` | Validate the contact's address |
 
-### AddressType
+### AddressKind
 | Value | Description |
 |-------|-------------|
 | `HOME` | Home address |
@@ -121,12 +128,6 @@ Generates format-preserving encrypted external identifiers for contacts.
 ### PendingActionEventPublisher
 Publishes pending action events to Kafka topics.
 
-### AddressStandardizationService
-Standardizes addresses using the USPS API.
-
-### UspsOAuthService
-Manages OAuth tokens for USPS API authentication.
-
 ## Repositories
 
 | Repository | Entity | Key Methods |
@@ -139,7 +140,8 @@ Manages OAuth tokens for USPS API authentication.
 | `ContactPhoneRepository` | ContactPhone | `findByContactId` |
 | `ContractRepository` | Contract | `findByCompanyId` |
 | `ContactContractRepository` | ContactContract | `findByContactIdWithContract`, `findCurrentContract`, `findOverlappingContracts` |
-| `StandardizedAddressRepository` | StandardizedAddress | `findByStreetAddressAndCity...` |
+| `AddressRepository` | StreetAddress | `findByLocalityAndAdministrativeAreaAndPostalCodeAndCountryCode` |
+| `AddressLineRepository` | AddressLine | JPA default methods |
 | `ContactSearchJdbcRepository` | - | JDBC-based search operations |
 
 ## Dependencies

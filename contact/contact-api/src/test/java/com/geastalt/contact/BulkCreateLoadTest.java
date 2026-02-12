@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+ *
+ * Licensed under a dual-license model: freely available for non-commercial use;
+ * commercial use requires a separate license. See LICENSE file for details.
+ * Contact license@geastalt.com for commercial licensing.
+ */
+
 package com.geastalt.contact;
 
 import com.geastalt.contact.grpc.*;
@@ -188,21 +196,23 @@ public class BulkCreateLoadTest {
             if (faker.random().nextDouble() < 0.6) {
                 int addressCount = faker.random().nextInt(1, 3);
                 for (int a = 0; a < addressCount; a++) {
+                    String zip = faker.address().zipCode();
+                    // 50% chance of zip+4
+                    if (faker.random().nextDouble() < 0.5) {
+                        zip = zip + "-" + String.format("%04d", faker.random().nextInt(0, 10000));
+                    }
+
                     AddressInput.Builder addressBuilder = AddressInput.newBuilder()
                             .setAddressType(ADDRESS_TYPES[a % ADDRESS_TYPES.length])
-                            .setStreetAddress(faker.address().streetAddress())
-                            .setCity(faker.address().city())
-                            .setState(faker.address().stateAbbr())
-                            .setZipCode(faker.address().zipCode());
+                            .addAddressLines(faker.address().streetAddress())
+                            .setLocality(faker.address().city())
+                            .setAdministrativeArea(faker.address().stateAbbr())
+                            .setPostalCode(zip)
+                            .setCountryCode("US");
 
                     // 30% chance of secondary address (apt, suite, etc)
                     if (faker.random().nextDouble() < 0.3) {
-                        addressBuilder.setSecondaryAddress(faker.address().secondaryAddress());
-                    }
-
-                    // 50% chance of zip+4
-                    if (faker.random().nextDouble() < 0.5) {
-                        addressBuilder.setZipPlus4(String.format("%04d", faker.random().nextInt(0, 10000)));
+                        addressBuilder.addAddressLines(faker.address().secondaryAddress());
                     }
 
                     contactBuilder.addAddresses(addressBuilder.build());

@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+ *
+ * Licensed under a dual-license model: freely available for non-commercial use;
+ * commercial use requires a separate license. See LICENSE file for details.
+ * Contact license@geastalt.com for commercial licensing.
+ */
+
 package com.geastalt.contact.grpc;
 
 import com.geastalt.contact.dto.ContactSearchResult;
@@ -7,7 +15,7 @@ import com.geastalt.contact.entity.ContactEmail;
 import com.geastalt.contact.entity.ContactLookup;
 import com.geastalt.contact.entity.ContactPendingAction;
 import com.geastalt.contact.entity.ContactPhone;
-import com.geastalt.contact.entity.StandardizedAddress;
+import com.geastalt.contact.entity.StreetAddress;
 import com.geastalt.contact.repository.ContactLookupRepository;
 import com.geastalt.contact.repository.ContactPendingActionRepository;
 import com.geastalt.contact.repository.ContactRepository;
@@ -61,7 +69,6 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
     private final Tracer tracer;
 
     private final String generateIdsTopic;
-    private final String validateAddressTopic;
 
     public ContactServiceImpl(
             ContactAddressService contactAddressService,
@@ -78,8 +85,7 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
             PartitionAssignmentService partitionAssignmentService,
             ContactLookupRepository contactLookupRepository,
             Tracer tracer,
-            @Value("${contact.pending-actions.topics.generate-external-identifiers}") String generateIdsTopic,
-            @Value("${contact.pending-actions.topics.validate-address}") String validateAddressTopic) {
+            @Value("${contact.pending-actions.topics.generate-external-identifiers}") String generateIdsTopic) {
         this.contactAddressService = contactAddressService;
         this.contactEmailService = contactEmailService;
         this.contactPhoneService = contactPhoneService;
@@ -95,7 +101,6 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
         this.contactLookupRepository = contactLookupRepository;
         this.tracer = tracer;
         this.generateIdsTopic = generateIdsTopic;
-        this.validateAddressTopic = validateAddressTopic;
     }
 
     @Override
@@ -107,7 +112,7 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
                 request.getAddressType());
 
         try {
-            com.geastalt.contact.entity.AddressType addressType = mapAddressType(request.getAddressType());
+            com.geastalt.contact.entity.AddressKind addressType = mapAddressType(request.getAddressType());
             ContactAddress contactAddress = contactAddressService.addAddressToContact(
                     request.getContactId(),
                     request.getAddressId(),
@@ -152,7 +157,7 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
                 request.getAddressType());
 
         try {
-            com.geastalt.contact.entity.AddressType addressType = mapAddressType(request.getAddressType());
+            com.geastalt.contact.entity.AddressKind addressType = mapAddressType(request.getAddressType());
             ContactAddress contactAddress = contactAddressService.updateContactAddress(
                     request.getContactId(),
                     request.getAddressId(),
@@ -227,7 +232,7 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
                 request.getAddressType());
 
         try {
-            com.geastalt.contact.entity.AddressType addressType = mapAddressType(request.getAddressType());
+            com.geastalt.contact.entity.AddressKind addressType = mapAddressType(request.getAddressType());
             contactAddressService.removeContactAddress(request.getContactId(), addressType);
 
             RemoveAddressResponse response = RemoveAddressResponse.newBuilder()
@@ -250,16 +255,16 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
         }
     }
 
-    private com.geastalt.contact.entity.AddressType mapAddressType(AddressType grpcType) {
+    private com.geastalt.contact.entity.AddressKind mapAddressType(AddressType grpcType) {
         return switch (grpcType) {
-            case HOME -> com.geastalt.contact.entity.AddressType.HOME;
-            case BUSINESS -> com.geastalt.contact.entity.AddressType.BUSINESS;
-            case MAILING -> com.geastalt.contact.entity.AddressType.MAILING;
+            case HOME -> com.geastalt.contact.entity.AddressKind.HOME;
+            case BUSINESS -> com.geastalt.contact.entity.AddressKind.BUSINESS;
+            case MAILING -> com.geastalt.contact.entity.AddressKind.MAILING;
             default -> throw new IllegalArgumentException("Invalid address type: " + grpcType);
         };
     }
 
-    private AddressType mapToGrpcAddressType(com.geastalt.contact.entity.AddressType entityType) {
+    private AddressType mapToGrpcAddressType(com.geastalt.contact.entity.AddressKind entityType) {
         return switch (entityType) {
             case HOME -> AddressType.HOME;
             case BUSINESS -> AddressType.BUSINESS;
@@ -267,26 +272,34 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
         };
     }
 
-    private ContactAddressDetails buildAddressDetails(StandardizedAddress address) {
+    private ContactAddressDetails buildAddressDetails(StreetAddress address) {
         ContactAddressDetails.Builder builder = ContactAddressDetails.newBuilder();
 
-        if (address.getStreetAddress() != null) {
-            builder.setStreetAddress(address.getStreetAddress());
+        if (address.getAddressLines() != null) {
+            for (com.geastalt.contact.entity.AddressLine line : address.getAddressLines()) {
+                builder.addAddressLines(line.getLineValue());
+            }
         }
-        if (address.getSecondaryAddress() != null) {
-            builder.setSecondaryAddress(address.getSecondaryAddress());
+        if (address.getLocality() != null) {
+            builder.setLocality(address.getLocality());
         }
-        if (address.getCity() != null) {
-            builder.setCity(address.getCity());
+        if (address.getAdministrativeArea() != null) {
+            builder.setAdministrativeArea(address.getAdministrativeArea());
         }
-        if (address.getState() != null) {
-            builder.setState(address.getState());
+        if (address.getPostalCode() != null) {
+            builder.setPostalCode(address.getPostalCode());
         }
-        if (address.getZipCode() != null) {
-            builder.setZipCode(address.getZipCode());
+        if (address.getCountryCode() != null) {
+            builder.setCountryCode(address.getCountryCode());
         }
-        if (address.getZipPlus4() != null) {
-            builder.setZipPlus4(address.getZipPlus4());
+        if (address.getSubLocality() != null) {
+            builder.setSubLocality(address.getSubLocality());
+        }
+        if (address.getSortingCode() != null) {
+            builder.setSortingCode(address.getSortingCode());
+        }
+        if (address.getValidated() != null) {
+            builder.setValidated(address.getValidated());
         }
 
         return builder.build();
@@ -303,7 +316,7 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
                 request.getEmailType());
 
         try {
-            com.geastalt.contact.entity.AddressType emailType = mapEmailType(request.getEmailType());
+            com.geastalt.contact.entity.AddressKind emailType = mapEmailType(request.getEmailType());
             ContactEmail contactEmail = contactEmailService.addEmailToContact(
                     request.getContactId(),
                     request.getEmail(),
@@ -347,7 +360,7 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
                 request.getEmailType());
 
         try {
-            com.geastalt.contact.entity.AddressType emailType = mapEmailType(request.getEmailType());
+            com.geastalt.contact.entity.AddressKind emailType = mapEmailType(request.getEmailType());
             ContactEmail contactEmail = contactEmailService.updateContactEmail(
                     request.getContactId(),
                     request.getEmail(),
@@ -420,7 +433,7 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
                 request.getEmailType());
 
         try {
-            com.geastalt.contact.entity.AddressType emailType = mapEmailType(request.getEmailType());
+            com.geastalt.contact.entity.AddressKind emailType = mapEmailType(request.getEmailType());
             contactEmailService.removeContactEmail(request.getContactId(), emailType);
 
             RemoveEmailResponse response = RemoveEmailResponse.newBuilder()
@@ -454,7 +467,7 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
                 request.getPhoneType());
 
         try {
-            com.geastalt.contact.entity.AddressType phoneType = mapPhoneType(request.getPhoneType());
+            com.geastalt.contact.entity.AddressKind phoneType = mapPhoneType(request.getPhoneType());
             ContactPhone contactPhone = contactPhoneService.addPhoneToContact(
                     request.getContactId(),
                     request.getPhoneNumber(),
@@ -498,7 +511,7 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
                 request.getPhoneType());
 
         try {
-            com.geastalt.contact.entity.AddressType phoneType = mapPhoneType(request.getPhoneType());
+            com.geastalt.contact.entity.AddressKind phoneType = mapPhoneType(request.getPhoneType());
             ContactPhone contactPhone = contactPhoneService.updateContactPhone(
                     request.getContactId(),
                     request.getPhoneNumber(),
@@ -571,7 +584,7 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
                 request.getPhoneType());
 
         try {
-            com.geastalt.contact.entity.AddressType phoneType = mapPhoneType(request.getPhoneType());
+            com.geastalt.contact.entity.AddressKind phoneType = mapPhoneType(request.getPhoneType());
             contactPhoneService.removeContactPhone(request.getContactId(), phoneType);
 
             RemovePhoneResponse response = RemovePhoneResponse.newBuilder()
@@ -596,16 +609,16 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
 
     // Email type mapping helpers
 
-    private com.geastalt.contact.entity.AddressType mapEmailType(EmailType grpcType) {
+    private com.geastalt.contact.entity.AddressKind mapEmailType(EmailType grpcType) {
         return switch (grpcType) {
-            case EMAIL_HOME -> com.geastalt.contact.entity.AddressType.HOME;
-            case EMAIL_BUSINESS -> com.geastalt.contact.entity.AddressType.BUSINESS;
-            case EMAIL_MAILING -> com.geastalt.contact.entity.AddressType.MAILING;
+            case EMAIL_HOME -> com.geastalt.contact.entity.AddressKind.HOME;
+            case EMAIL_BUSINESS -> com.geastalt.contact.entity.AddressKind.BUSINESS;
+            case EMAIL_MAILING -> com.geastalt.contact.entity.AddressKind.MAILING;
             default -> throw new IllegalArgumentException("Invalid email type: " + grpcType);
         };
     }
 
-    private EmailType mapToGrpcEmailType(com.geastalt.contact.entity.AddressType entityType) {
+    private EmailType mapToGrpcEmailType(com.geastalt.contact.entity.AddressKind entityType) {
         return switch (entityType) {
             case HOME -> EmailType.EMAIL_HOME;
             case BUSINESS -> EmailType.EMAIL_BUSINESS;
@@ -615,16 +628,16 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
 
     // Phone type mapping helpers
 
-    private com.geastalt.contact.entity.AddressType mapPhoneType(PhoneType grpcType) {
+    private com.geastalt.contact.entity.AddressKind mapPhoneType(PhoneType grpcType) {
         return switch (grpcType) {
-            case PHONE_HOME -> com.geastalt.contact.entity.AddressType.HOME;
-            case PHONE_BUSINESS -> com.geastalt.contact.entity.AddressType.BUSINESS;
-            case PHONE_MAILING -> com.geastalt.contact.entity.AddressType.MAILING;
+            case PHONE_HOME -> com.geastalt.contact.entity.AddressKind.HOME;
+            case PHONE_BUSINESS -> com.geastalt.contact.entity.AddressKind.BUSINESS;
+            case PHONE_MAILING -> com.geastalt.contact.entity.AddressKind.MAILING;
             default -> throw new IllegalArgumentException("Invalid phone type: " + grpcType);
         };
     }
 
-    private PhoneType mapToGrpcPhoneType(com.geastalt.contact.entity.AddressType entityType) {
+    private PhoneType mapToGrpcPhoneType(com.geastalt.contact.entity.AddressKind entityType) {
         return switch (entityType) {
             case HOME -> PhoneType.PHONE_HOME;
             case BUSINESS -> PhoneType.PHONE_BUSINESS;
@@ -673,14 +686,16 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
 
                 if (contact.getPreferredAddress() != null) {
                     ContactSearchResult.PreferredAddress addr = contact.getPreferredAddress();
-                    entryBuilder.setPreferredAddress(ContactAddressDetails.newBuilder()
-                            .setStreetAddress(addr.getStreetAddress() != null ? addr.getStreetAddress() : "")
-                            .setSecondaryAddress(addr.getSecondaryAddress() != null ? addr.getSecondaryAddress() : "")
-                            .setCity(addr.getCity() != null ? addr.getCity() : "")
-                            .setState(addr.getState() != null ? addr.getState() : "")
-                            .setZipCode(addr.getZipCode() != null ? addr.getZipCode() : "")
-                            .setZipPlus4(addr.getZipPlus4() != null ? addr.getZipPlus4() : "")
-                            .build());
+                    ContactAddressDetails.Builder addrBuilder = ContactAddressDetails.newBuilder();
+                    if (addr.getAddressLines() != null) {
+                        addrBuilder.addAllAddressLines(addr.getAddressLines());
+                    }
+                    addrBuilder
+                            .setLocality(addr.getLocality() != null ? addr.getLocality() : "")
+                            .setAdministrativeArea(addr.getAdministrativeArea() != null ? addr.getAdministrativeArea() : "")
+                            .setPostalCode(addr.getPostalCode() != null ? addr.getPostalCode() : "")
+                            .setCountryCode(addr.getCountryCode() != null ? addr.getCountryCode() : "");
+                    entryBuilder.setPreferredAddress(addrBuilder.build());
                 }
 
                 responseBuilder.addContacts(entryBuilder.build());
@@ -843,7 +858,6 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
     private com.geastalt.contact.entity.PendingActionType mapPendingActionType(PendingActionType grpcType) {
         return switch (grpcType) {
             case GENERATE_EXTERNAL_IDENTIFIERS -> com.geastalt.contact.entity.PendingActionType.GENERATE_EXTERNAL_IDENTIFIERS;
-            case VALIDATE_ADDRESS -> com.geastalt.contact.entity.PendingActionType.VALIDATE_ADDRESS;
             default -> throw new IllegalArgumentException("Invalid pending action type: " + grpcType);
         };
     }
@@ -851,9 +865,9 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
     @Override
     public void createContact(CreateContactRequest request,
                               StreamObserver<CreateContactResponse> responseObserver) {
-        log.info("gRPC CreateContact called: firstName={}, lastName={}, companyName={}, skipGenerateExternalIdentifiers={}, skipValidateAddress={}",
+        log.info("gRPC CreateContact called: firstName={}, lastName={}, companyName={}, skipGenerateExternalIdentifiers={}",
                 request.getFirstName(), request.getLastName(), request.getCompanyName(),
-                request.getSkipGenerateExternalIdentifiers(), request.getSkipValidateAddress());
+                request.getSkipGenerateExternalIdentifiers());
 
         try {
             // Validate required fields
@@ -894,17 +908,6 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
                 pendingActionEventPublisher.publishPendingAction(
                         contact.getId(),
                         com.geastalt.contact.entity.PendingActionType.GENERATE_EXTERNAL_IDENTIFIERS);
-            }
-
-            if (!request.getSkipValidateAddress()) {
-                ContactPendingAction action = ContactPendingAction.builder()
-                        .contact(contact)
-                        .actionType(com.geastalt.contact.entity.PendingActionType.VALIDATE_ADDRESS)
-                        .build();
-                contactPendingActionRepository.save(action);
-                pendingActionEventPublisher.publishPendingAction(
-                        contact.getId(),
-                        com.geastalt.contact.entity.PendingActionType.VALIDATE_ADDRESS);
             }
 
             // Fetch the complete contact data for response
@@ -949,14 +952,16 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
 
         if (contact.getPreferredAddress() != null) {
             ContactSearchResult.PreferredAddress addr = contact.getPreferredAddress();
-            entryBuilder.setPreferredAddress(ContactAddressDetails.newBuilder()
-                    .setStreetAddress(addr.getStreetAddress() != null ? addr.getStreetAddress() : "")
-                    .setSecondaryAddress(addr.getSecondaryAddress() != null ? addr.getSecondaryAddress() : "")
-                    .setCity(addr.getCity() != null ? addr.getCity() : "")
-                    .setState(addr.getState() != null ? addr.getState() : "")
-                    .setZipCode(addr.getZipCode() != null ? addr.getZipCode() : "")
-                    .setZipPlus4(addr.getZipPlus4() != null ? addr.getZipPlus4() : "")
-                    .build());
+            ContactAddressDetails.Builder addrBuilder = ContactAddressDetails.newBuilder();
+            if (addr.getAddressLines() != null) {
+                addrBuilder.addAllAddressLines(addr.getAddressLines());
+            }
+            addrBuilder
+                    .setLocality(addr.getLocality() != null ? addr.getLocality() : "")
+                    .setAdministrativeArea(addr.getAdministrativeArea() != null ? addr.getAdministrativeArea() : "")
+                    .setPostalCode(addr.getPostalCode() != null ? addr.getPostalCode() : "")
+                    .setCountryCode(addr.getCountryCode() != null ? addr.getCountryCode() : "");
+            entryBuilder.setPreferredAddress(addrBuilder.build());
         }
 
         return entryBuilder.build();
@@ -965,10 +970,9 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
     @Override
     public void bulkCreateContacts(BulkCreateContactsRequest request,
                                    StreamObserver<BulkCreateContactsResponse> responseObserver) {
-        log.info("gRPC BulkCreateContacts called: contactCount={}, skipGenerateExternalIdentifiers={}, skipValidateAddress={}",
+        log.info("gRPC BulkCreateContacts called: contactCount={}, skipGenerateExternalIdentifiers={}",
                 request.getContactsCount(),
-                request.getSkipGenerateExternalIdentifiers(),
-                request.getSkipValidateAddress());
+                request.getSkipGenerateExternalIdentifiers());
 
         try {
             if (request.getContactsCount() == 0) {
@@ -980,8 +984,7 @@ public class ContactServiceImpl extends ContactServiceGrpc.ContactServiceImplBas
 
             BulkCreateContactsResponse response = bulkContactService.bulkCreateContacts(
                     request,
-                    generateIdsTopic,
-                    validateAddressTopic
+                    generateIdsTopic
             );
 
             log.info("BulkCreateContacts completed: total={}, success={}, failure={}",

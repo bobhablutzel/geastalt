@@ -1,3 +1,9 @@
+-- Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+--
+-- Licensed under a dual-license model: freely available for non-commercial use;
+-- commercial use requires a separate license. See LICENSE file for details.
+-- Contact license@geastalt.com for commercial licensing.
+
 -- ============================================================================
 -- PostgreSQL Bulk Data Loader for Test Environment
 -- ============================================================================
@@ -91,22 +97,33 @@ SELECT 'Contracts loaded: ' || COUNT(*) FROM contracts;
 SELECT '=== Step 4: Loading standardized addresses ===' AS status;
 
 -- Add temp column to track CSV address_id for later joins
-ALTER TABLE standardized_addresses ADD COLUMN IF NOT EXISTS _csv_id UUID;
+ALTER TABLE addresses ADD COLUMN IF NOT EXISTS _csv_id UUID;
 
-INSERT INTO standardized_addresses (street_address, city, state, zip_code, _csv_id)
+INSERT INTO addresses (locality, administrative_area, postal_code, country_code, _csv_id)
 SELECT
-    sa.street_number || ' ' || sa.street_name || ' ' || sa.street_type,
     sa.city,
     sa.state,
     sa.zip_code,
+    'US',
     sa.address_id
 FROM staging_addresses sa
 ON CONFLICT DO NOTHING;
 
 -- Create index on _csv_id for join performance
-CREATE INDEX IF NOT EXISTS idx_std_addr_csv_id ON standardized_addresses(_csv_id);
+CREATE INDEX IF NOT EXISTS idx_std_addr_csv_id ON addresses(_csv_id);
 
-SELECT 'Standardized addresses loaded: ' || COUNT(*) FROM standardized_addresses WHERE _csv_id IS NOT NULL;
+SELECT 'Standardized addresses loaded: ' || COUNT(*) FROM addresses WHERE _csv_id IS NOT NULL;
+
+-- Insert address lines (street address as line 1)
+INSERT INTO address_lines (address_id, line_order, line_value)
+SELECT
+    a.id,
+    1,
+    sa.street_number || ' ' || sa.street_name || ' ' || sa.street_type
+FROM staging_addresses sa
+JOIN addresses a ON a._csv_id = sa.address_id;
+
+SELECT 'Address lines loaded: ' || COUNT(*) FROM address_lines;
 
 -- ============================================================================
 -- STEP 5: Load contacts with temp CSV ID column
@@ -150,7 +167,7 @@ SELECT
     true
 FROM staging_contacts sc
 JOIN contacts c ON c._csv_id = sc.contact_id
-JOIN standardized_addresses a ON a._csv_id = sc.address_id
+JOIN addresses a ON a._csv_id = sc.address_id
 ON CONFLICT (contact_id, address_type) DO NOTHING;
 
 SELECT 'Contact addresses linked: ' || COUNT(*) FROM contact_addresses;
@@ -232,7 +249,7 @@ DROP INDEX IF EXISTS idx_std_addr_csv_id;
 
 -- Drop temp columns
 ALTER TABLE contacts DROP COLUMN IF EXISTS _csv_id;
-ALTER TABLE standardized_addresses DROP COLUMN IF EXISTS _csv_id;
+ALTER TABLE addresses DROP COLUMN IF EXISTS _csv_id;
 
 -- Drop staging tables
 DROP TABLE IF EXISTS staging_contacts CASCADE;
@@ -245,11 +262,12 @@ DROP TABLE IF EXISTS staging_contracts CASCADE;
 SELECT '=== IMPORT COMPLETE ===' AS status;
 SELECT 'Total contracts:          ' || COUNT(*) FROM contracts;
 SELECT 'Total contacts:           ' || COUNT(*) FROM contacts;
-SELECT 'Total addresses:          ' || COUNT(*) FROM standardized_addresses;
+SELECT 'Total addresses:          ' || COUNT(*) FROM addresses;
 SELECT 'Total contact_addresses:  ' || COUNT(*) FROM contact_addresses;
 SELECT 'Total contact_emails:     ' || COUNT(*) FROM contact_emails;
 SELECT 'Total contact_phones:     ' || COUNT(*) FROM contact_phones;
 SELECT 'Total contact_contracts:  ' || COUNT(*) FROM contact_contracts;
+SELECT 'Total address_lines:      ' || COUNT(*) FROM address_lines;
 SELECT 'Total contact_lookup:     ' || COUNT(*) FROM contact_lookup;
 
 COMMIT;

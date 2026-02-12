@@ -1,3 +1,9 @@
+# Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+#
+# Licensed under a dual-license model: freely available for non-commercial use;
+# commercial use requires a separate license. See LICENSE file for details.
+# Contact license@geastalt.com for commercial licensing.
+
 replicaCount: 2
 
 image:
@@ -20,24 +26,11 @@ resources:
 
 javaOpts: "-Xms256m -Xmx512m -XX:+UseG1GC"
 
-database:
-  host: "192.168.1.17"
-  port: "5432"
-  name: "contact"
-  username: "bob"
-
-kafka:
-  bootstrapServers: "kafka:9092"
-  consumerGroupId: "address-consumer"
-  topics:
-    validateAddress: "tracking.contact.address"
-
 usps:
   baseUrl: "https://apis-tem.usps.com"
 
 # External secret name (create with kubectl before deploying)
 # kubectl create secret generic address-secret \
-#   --from-literal=DB_PASSWORD=xxx \
 #   --from-literal=USPS_CLIENT_ID=xxx \
 #   --from-literal=USPS_CLIENT_SECRET=xxx
 secretName: "address-secret"

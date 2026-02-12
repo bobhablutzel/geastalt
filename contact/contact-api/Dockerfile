@@ -1,3 +1,9 @@
+# Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+#
+# Licensed under a dual-license model: freely available for non-commercial use;
+# commercial use requires a separate license. See LICENSE file for details.
+# Contact license@geastalt.com for commercial licensing.
+
 # Build stage - use Debian-based image (glibc) for compatibility
 FROM eclipse-temurin:21.0.9_10-jdk AS build
 
@@ -10,7 +16,7 @@ RUN apt-get update && apt-get install -y maven && rm -rf /var/lib/apt/lists/*
 COPY pom.xml .
 COPY contact-common/pom.xml contact-common/
 COPY contact-api/pom.xml contact-api/
-COPY contact-consumer-ids/pom.xml contact-consumer-ids/
+COPY async-generate-ffpe-id/pom.xml async-generate-ffpe-id/
 
 # Copy source code
 COPY contact-common/src contact-common/src

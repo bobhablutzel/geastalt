@@ -1,3 +1,9 @@
+-- Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+--
+-- Licensed under a dual-license model: freely available for non-commercial use;
+-- commercial use requires a separate license. See LICENSE file for details.
+-- Contact license@geastalt.com for commercial licensing.
+
 -- ============================================================================
 -- SQL Server Bulk Data Loader for Test Environment
 -- ============================================================================
@@ -122,23 +128,34 @@ PRINT CONCAT('Contracts loaded: ', (SELECT COUNT(*) FROM dbo.contracts));
 PRINT '=== Step 4: Loading standardized addresses ===';
 
 -- Add temp column if not present
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.standardized_addresses') AND name = '_csv_id')
-    ALTER TABLE dbo.standardized_addresses ADD _csv_id UNIQUEIDENTIFIER;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.addresses') AND name = '_csv_id')
+    ALTER TABLE dbo.addresses ADD _csv_id UNIQUEIDENTIFIER;
 
-INSERT INTO dbo.standardized_addresses (street_address, city, state, zip_code, _csv_id)
+INSERT INTO dbo.addresses (locality, administrative_area, postal_code, country_code, _csv_id)
 SELECT
-    CONCAT(sa.street_number, ' ', sa.street_name, ' ', sa.street_type),
     sa.city,
     sa.state,
     sa.zip_code,
+    'US',
     sa.address_id
 FROM dbo.staging_addresses sa;
 
 -- Create index on _csv_id for join performance
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_std_addr_csv_id' AND object_id = OBJECT_ID('dbo.standardized_addresses'))
-    CREATE INDEX idx_std_addr_csv_id ON dbo.standardized_addresses(_csv_id);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_std_addr_csv_id' AND object_id = OBJECT_ID('dbo.addresses'))
+    CREATE INDEX idx_std_addr_csv_id ON dbo.addresses(_csv_id);
 
-PRINT CONCAT('Standardized addresses loaded: ', (SELECT COUNT(*) FROM dbo.standardized_addresses WHERE _csv_id IS NOT NULL));
+PRINT CONCAT('Standardized addresses loaded: ', (SELECT COUNT(*) FROM dbo.addresses WHERE _csv_id IS NOT NULL));
+
+-- Insert address lines (street address as line 1)
+INSERT INTO dbo.address_lines (address_id, line_order, line_value)
+SELECT
+    a.id,
+    1,
+    CONCAT(sa.street_number, ' ', sa.street_name, ' ', sa.street_type)
+FROM dbo.staging_addresses sa
+JOIN dbo.addresses a ON a._csv_id = sa.address_id;
+
+PRINT CONCAT('Address lines loaded: ', (SELECT COUNT(*) FROM dbo.address_lines));
 
 -- ============================================================================
 -- STEP 5: Load contacts with temp CSV ID column
@@ -180,7 +197,7 @@ SELECT
     1
 FROM dbo.staging_contacts sc
 JOIN dbo.contacts c ON c._csv_id = sc.contact_id
-JOIN dbo.standardized_addresses a ON a._csv_id = sc.address_id
+JOIN dbo.addresses a ON a._csv_id = sc.address_id
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.contact_addresses ca
     WHERE ca.contact_id = c.id AND ca.address_type = 'HOME'
@@ -271,15 +288,15 @@ PRINT '=== Step 11: Cleaning up ===';
 IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_contacts_csv_id' AND object_id = OBJECT_ID('dbo.contacts'))
     DROP INDEX idx_contacts_csv_id ON dbo.contacts;
 
-IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_std_addr_csv_id' AND object_id = OBJECT_ID('dbo.standardized_addresses'))
-    DROP INDEX idx_std_addr_csv_id ON dbo.standardized_addresses;
+IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_std_addr_csv_id' AND object_id = OBJECT_ID('dbo.addresses'))
+    DROP INDEX idx_std_addr_csv_id ON dbo.addresses;
 
 -- Drop temp columns
 IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.contacts') AND name = '_csv_id')
     ALTER TABLE dbo.contacts DROP COLUMN _csv_id;
 
-IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.standardized_addresses') AND name = '_csv_id')
-    ALTER TABLE dbo.standardized_addresses DROP COLUMN _csv_id;
+IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.addresses') AND name = '_csv_id')
+    ALTER TABLE dbo.addresses DROP COLUMN _csv_id;
 
 -- Drop staging tables
 IF OBJECT_ID('dbo.staging_contacts', 'U') IS NOT NULL DROP TABLE dbo.staging_contacts;
@@ -293,11 +310,12 @@ PRINT '';
 PRINT '=== IMPORT COMPLETE ===';
 PRINT CONCAT('Total contracts:          ', (SELECT COUNT(*) FROM dbo.contracts));
 PRINT CONCAT('Total contacts:           ', (SELECT COUNT(*) FROM dbo.contacts));
-PRINT CONCAT('Total addresses:          ', (SELECT COUNT(*) FROM dbo.standardized_addresses));
+PRINT CONCAT('Total addresses:          ', (SELECT COUNT(*) FROM dbo.addresses));
 PRINT CONCAT('Total contact_addresses:  ', (SELECT COUNT(*) FROM dbo.contact_addresses));
 PRINT CONCAT('Total contact_emails:     ', (SELECT COUNT(*) FROM dbo.contact_emails));
 PRINT CONCAT('Total contact_phones:     ', (SELECT COUNT(*) FROM dbo.contact_phones));
 PRINT CONCAT('Total contact_contracts:  ', (SELECT COUNT(*) FROM dbo.contact_contracts));
+PRINT CONCAT('Total address_lines:      ', (SELECT COUNT(*) FROM dbo.address_lines));
 PRINT CONCAT('Total contact_lookup:     ', (SELECT COUNT(*) FROM dbo.contact_lookup));
 PRINT CONCAT('Elapsed time: ', DATEDIFF(SECOND, @start_time, SYSDATETIME()), ' seconds');
 

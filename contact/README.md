@@ -14,23 +14,19 @@ flowchart TB
 
         subgraph kafka["Apache Kafka"]
             topic1["tracking.contact.ids"]
-            topic2["tracking.contact.address"]
         end
 
         subgraph consumers["Kafka Consumers"]
-            consumer1["contact-consumer-ids\n(2 replicas)\n:9010"]
-            consumer2["contact-consumer-address\n(2 replicas)\n:9011"]
+            consumer1["async-generate-ffpe-id\n(2 replicas)\n:9010"]
         end
 
         db[(PostgreSQL\n192.168.1.17:5432)]
 
         api -->|"publish events"| kafka
         topic1 -->|"consume"| consumer1
-        topic2 -->|"consume"| consumer2
 
         api -->|"read/write"| db
         consumer1 -->|"read/write"| db
-        consumer2 -->|"read/write"| db
     end
 
     client["Client Applications"] -->|"gRPC/REST"| api
@@ -43,12 +39,10 @@ contact/
 ├── pom.xml                          # Parent POM
 ├── contact-common/                   # Shared entities, repositories, services
 ├── contact-api/                      # gRPC and REST API service
-├── contact-consumer-ids/             # Kafka consumer: Generate External IDs
-├── contact-consumer-address/         # Kafka consumer: Validate Address
+├── async-generate-ffpe-id/             # Kafka consumer: Generate External IDs
 ├── helm/                            # Kubernetes Helm charts
 │   ├── contact-api/
-│   ├── contact-consumer-ids/
-│   └── contact-consumer-address/
+│   └── async-generate-ffpe-id/
 ├── k8s/                             # Kubernetes manifests
 └── terraform/                       # Infrastructure as Code
 ```
@@ -59,8 +53,7 @@ contact/
 |--------|-------------|------|
 | `contact-common` | Shared entities, repositories, DTOs, and services | N/A (library) |
 | `contact-api` | gRPC and REST API endpoints for contact operations | 9001 (gRPC), 9002 (REST) |
-| `contact-consumer-ids` | Processes `GENERATE_EXTERNAL_IDENTIFIERS` pending actions | 9010 |
-| `contact-consumer-address` | Processes `VALIDATE_ADDRESS` pending actions | 9011 |
+| `async-generate-ffpe-id` | Processes `GENERATE_EXTERNAL_IDENTIFIERS` pending actions | 9010 |
 
 ## Event Flow
 
@@ -70,24 +63,17 @@ sequenceDiagram
     participant API as contact-api
     participant DB as PostgreSQL
     participant Kafka
-    participant IdsConsumer as contact-consumer-ids
-    participant AddrConsumer as contact-consumer-address
+    participant IdsConsumer as async-generate-ffpe-id
 
     Client->>API: CreateContact(firstName, lastName)
     API->>DB: Insert Contact
     API->>DB: Insert PendingAction (GENERATE_EXTERNAL_IDENTIFIERS)
-    API->>DB: Insert PendingAction (VALIDATE_ADDRESS)
     API->>Kafka: Publish to tracking.contact.ids
-    API->>Kafka: Publish to tracking.contact.address
     API-->>Client: ContactEntry response
 
     Kafka->>IdsConsumer: Consume contact ID
     IdsConsumer->>DB: Generate & save alternate ID
     IdsConsumer->>DB: Delete pending action
-
-    Kafka->>AddrConsumer: Consume contact ID
-    AddrConsumer->>DB: Validate contact addresses
-    AddrConsumer->>DB: Delete pending action
 ```
 
 ## Building
@@ -105,8 +91,7 @@ mvn clean package -DskipTests -pl contact-common,contact-api -am
 ```bash
 # Build from project root
 docker build -f contact-api/Dockerfile -t contact-api:latest .
-docker build -f contact-consumer-ids/Dockerfile -t contact-consumer-ids:latest .
-docker build -f contact-consumer-address/Dockerfile -t contact-consumer-address:latest .
+docker build -f async-generate-ffpe-id/Dockerfile -t async-generate-ffpe-id:latest .
 ```
 
 ## Local Development
@@ -127,11 +112,8 @@ docker build -f contact-consumer-address/Dockerfile -t contact-consumer-address:
 cd contact-api
 mvn spring-boot:run
 
-# Start consumers (in separate terminals)
-cd contact-consumer-ids
-mvn spring-boot:run
-
-cd contact-consumer-address
+# Start consumer (in separate terminal)
+cd async-generate-ffpe-id
 mvn spring-boot:run
 ```
 
@@ -191,16 +173,11 @@ kubectl create secret generic external-fpe-key-secret \
   --from-literal=USPS_CLIENT_ID=xxx \
   --from-literal=USPS_CLIENT_SECRET=xxx
 
-# For contact-consumer-ids
-kubectl create secret generic contact-consumer-ids-secret \
+# For async-generate-ffpe-id
+kubectl create secret generic async-generate-ffpe-id-secret \
   --from-literal=DB_PASSWORD=xxx \
   --from-literal=CONTACT_EXTERNAL_ID_KEY=xxx
 
-# For contact-consumer-address
-kubectl create secret generic contact-consumer-address-secret \
-  --from-literal=DB_PASSWORD=xxx \
-  --from-literal=USPS_CLIENT_ID=xxx \
-  --from-literal=USPS_CLIENT_SECRET=xxx
 ```
 
 ### Deploy with Helm
@@ -209,21 +186,18 @@ kubectl create secret generic contact-consumer-address-secret \
 # Build images for minikube
 eval $(minikube docker-env)
 docker build -f contact-api/Dockerfile -t contact-api:latest .
-docker build -f contact-consumer-ids/Dockerfile -t contact-consumer-ids:latest .
-docker build -f contact-consumer-address/Dockerfile -t contact-consumer-address:latest .
+docker build -f async-generate-ffpe-id/Dockerfile -t async-generate-ffpe-id:latest .
 
 # Deploy
 helm upgrade --install contact-api helm/contact-api
-helm upgrade --install contact-consumer-ids helm/contact-consumer-ids
-helm upgrade --install contact-consumer-address helm/contact-consumer-address
+helm upgrade --install async-generate-ffpe-id helm/async-generate-ffpe-id
 ```
 
 ## Kafka Topics
 
 | Topic | Purpose | Producer | Consumer |
 |-------|---------|----------|----------|
-| `tracking.contact.ids` | Generate external identifiers | contact-api | contact-consumer-ids |
-| `tracking.contact.address` | Validate contact addresses | contact-api | contact-consumer-address |
+| `tracking.contact.ids` | Generate external identifiers | contact-api | async-generate-ffpe-id |
 
 ## Pending Actions
 
@@ -231,8 +205,7 @@ When a contact is created, pending actions are automatically added (unless disab
 
 | Action Type | Description | Processed By |
 |-------------|-------------|--------------|
-| `GENERATE_EXTERNAL_IDENTIFIERS` | Generate NEW_NATIONS alternate ID | contact-consumer-ids |
-| `VALIDATE_ADDRESS` | Validate contact addresses via USPS | contact-consumer-address |
+| `GENERATE_EXTERNAL_IDENTIFIERS` | Generate NEW_NATIONS alternate ID | async-generate-ffpe-id |
 
 ### CreateContact Flags
 
@@ -241,7 +214,6 @@ message CreateContactRequest {
   string first_name = 1;
   string last_name = 2;
   bool skip_generate_external_identifiers = 3;  // Skip GENERATE_EXTERNAL_IDENTIFIERS
-  bool skip_validate_address = 4;               // Skip VALIDATE_ADDRESS
 }
 ```
 
@@ -258,7 +230,8 @@ message CreateContactRequest {
   - `contact_phones` - Contact phone numbers
   - `contracts` - Contract definitions (company/contract)
   - `contact_contracts` - Contact-contract associations with effective/expiration dates
-  - `standardized_addresses` - USPS-standardized addresses
+  - `addresses` - Address records (international model: locality, administrative_area, postal_code, country_code)
+  - `address_lines` - Address line details (1-many relationship with addresses)
 
 ## Technology Stack
 

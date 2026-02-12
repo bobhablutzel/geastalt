@@ -1,8 +1,17 @@
+# Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+#
+# Licensed under a dual-license model: freely available for non-commercial use;
+# commercial use requires a separate license. See LICENSE file for details.
+# Contact license@geastalt.com for commercial licensing.
+
 # Default values for address-istio
 # This is a YAML-formatted file.
 
 # Gateway configuration
+# Disabled by default — address is a Kafka consumer and does not serve external traffic.
+# Enable only if this service needs to be exposed via the Istio ingress gateway.
 gateway:
+  enabled: false
   name: address-gateway
   host: "*"
   selector:
@@ -11,7 +20,7 @@ gateway:
 # Service configuration
 service:
   name: address
-  namespace: address
+  namespace: geastalt
   grpcPort: 9010
   httpPort: 9011
 
@@ -25,6 +34,8 @@ virtualService:
 
 # Destination rule configuration
 destinationRule:
+  loadBalancer:
+    simple: ROUND_ROBIN
   connectionPool:
     http:
       h2UpgradePolicy: UPGRADE
@@ -41,4 +52,4 @@ destinationRule:
 # Peer authentication (mTLS)
 peerAuthentication:
   mtls:
-    mode: STRICT
+    mode: PERMISSIVE

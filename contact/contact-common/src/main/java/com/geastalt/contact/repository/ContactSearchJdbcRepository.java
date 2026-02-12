@@ -1,3 +1,11 @@
+/*
+ * Copyright (c) 2026 Bob Hablutzel. All rights reserved.
+ *
+ * Licensed under a dual-license model: freely available for non-commercial use;
+ * commercial use requires a separate license. See LICENSE file for details.
+ * Contact license@geastalt.com for commercial licensing.
+ */
+
 package com.geastalt.contact.repository;
 
 import com.geastalt.contact.config.ContactSqlProperties;
@@ -221,15 +229,20 @@ public class ContactSearchJdbcRepository {
                 .preferredEmail(rs.getString("preferred_email"));
 
         // Build preferred address if present
-        String streetAddress = rs.getString("street_address");
-        if (streetAddress != null) {
+        String locality = rs.getString("locality");
+        if (locality != null) {
+            List<String> addressLines = new java.util.ArrayList<>();
+            String line1 = rs.getString("address_line_1");
+            String line2 = rs.getString("address_line_2");
+            if (line1 != null) addressLines.add(line1);
+            if (line2 != null) addressLines.add(line2);
+
             builder.preferredAddress(ContactSearchResult.PreferredAddress.builder()
-                    .streetAddress(streetAddress)
-                    .secondaryAddress(rs.getString("secondary_address"))
-                    .city(rs.getString("city"))
-                    .state(rs.getString("state"))
-                    .zipCode(rs.getString("zip_code"))
-                    .zipPlus4(rs.getString("zip_plus4"))
+                    .addressLines(addressLines)
+                    .locality(locality)
+                    .administrativeArea(rs.getString("administrative_area"))
+                    .postalCode(rs.getString("postal_code"))
+                    .countryCode(rs.getString("country_code"))
                     .build());
         }
 
