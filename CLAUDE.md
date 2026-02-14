@@ -171,14 +171,18 @@ grpcurl -plaintext -d '{}' localhost:9010 com.geastalt.address.grpc.AddressServi
   - US → Smarty US Street API; CA/GB → Smarty International Street API
 
 ### Provider Routing
-- Configured in `address.providers.routing` (country code → ordered provider list)
-- Single provider per country: always uses that provider
-- Count-based distribution: `count` field cycles requests across providers (e.g., count=3/count=2 gives 60/40 split)
-- Percentage-based distribution: `percentage` field distributes by percentage (must sum to 100)
+- Configured in `address.providers.routing-configuration` (country code → strategy map)
+- Single provider per country: `provider: smarty`
+- Failover: `strategy: failover, specification: usps,smarty` — fixed priority order, tries next on error
+- Round-robin: `strategy: round_robin, specification: usps,smarty` — rotates primary provider each request
+- Count-based: `strategy: counter, specification: usps:3,smarty` — cycles by absolute count
+- Percentage-based: `strategy: percentage, specification: usps:70,smarty` — distributes by percentage per 100-request block
 - Automatic fallback: on PROVIDER_ERROR, tries next provider in the configured order
+- Routing strategies implemented as sealed interface hierarchy (`ProviderLoadBalancerStrategy`)
 
 ### gRPC Endpoints
 - VerifyAddress - verify/standardize an address using routed providers or explicit provider override
+  - Response includes optional `latitude`/`longitude` (Smarty populates; USPS does not)
 - VerifyAddressFormat - verify address format (ZIP, state codes, postal codes) for US/CA/GB
 - GetProviders - list available verification providers and their supported countries
 
