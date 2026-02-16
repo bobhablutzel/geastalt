@@ -1,20 +1,18 @@
-# Gaestalt
-
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="gaestaltlogo-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="gaestaltlogo-light.png">
-  <img src="gaestaltlogo-light.png" alt="Gaestalt name with G made up of parts">
+  <img src="gaestaltlogo-light.png" alt="Gæstalt name with G made up of parts">
 </picture>
 
-Gaestalt accelerates the creation of enterprise applications within medium- to large-scale
-organizations. Gaestalt is a toolkit of components, each of which can be used independently
+Gæstalt accelerates the creation of enterprise applications within medium- to large-scale
+organizations. Gæstalt is a toolkit of components, each of which can be used independently
 or in conjunction with the other components in the
 
-The gaestalt system covers all the key business areas needed for most businesses, 
+The Gæstalt system covers all the key business areas needed for most businesses, 
 including core concepts such as customer and supporting functions such as notification
 and address validation. 
 
-Gaestalt is written wtih agentic agents in mind. The goal of the project is to have 
+Gæstalt is written in part with agentic agents in mind. One goal of the project is to have 
 components that are well document and easy to reason about for both human and agentic 
 programmers.
 
@@ -70,7 +68,7 @@ gaestalt/
 ```mermaid
 block
   columns 3
-  owner["Gaestalt Business Architecture"]:3
+  owner["Gæstalt Business Architecture"]:3
   block:appGroup:2
     columns 2
     Mobile Web Desktop API
